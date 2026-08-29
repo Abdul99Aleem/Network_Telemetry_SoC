@@ -240,3 +240,93 @@ machine_config/
 # reg/
 # lib/
 # README.md
+#
+# =============================================================================
+# .gitignore  --  AXI4 Interconnect Honours Project
+# Covers VCS, Verdi, and general build artefacts.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# VCS compile and simulation outputs
+# -----------------------------------------------------------------------------
+run/simv
+run/simv.daidir/
+run/csrc/
+run/ucli.key
+run/*.log
+run/sim_stdout.log
+run/verdi_config_file
+
+# VCS incremental compile working files
+*.cm
+*.so
+*.a
+*.o
+
+# -----------------------------------------------------------------------------
+# Verdi / FSDB waveform outputs
+# -----------------------------------------------------------------------------
+run/*.fsdb
+run/*.vpd
+run/*.vdb
+run/verdiLog/
+verdiLog/
+
+# Verdi session and auto-save files
+novas.conf
+novas.rc
+novas.*.log*
+novas_dump.log
+*.ses
+*.ses.config
+*.ses.png
+*.ses.wave.*
+
+# Verdi per-session config files (contain machine/PID-specific data)
+run/novas.conf
+run/novas.rc
+*.conf
+*.rc
+!run/wave.rc
+
+# -----------------------------------------------------------------------------
+# Synopsys tool licence and key files
+# -----------------------------------------------------------------------------
+*.key
+DVEfiles/
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# -----------------------------------------------------------------------------
+# Editor and OS artefacts
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+.idea/
+.vscode/
+*.iml
+
+# -----------------------------------------------------------------------------
+# Placeholder / scratch files
+# -----------------------------------------------------------------------------
+main.c
+test.c
+
+# -----------------------------------------------------------------------------
+# Temporary and log files (root level)
+# -----------------------------------------------------------------------------
+*.log
