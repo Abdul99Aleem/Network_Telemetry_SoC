@@ -1,0 +1,8 @@
+verdiSetActWin -dock widgetDock_<Watch>
+wvCreateWindow
+wvOpenFile -win $_nWave2 \
+           {/home/student/Documents/honours_contents/honours_project/run/fsdb.dump}
+wvOpenFile -win $_nWave2 \
+           {/home/student/Documents/honours_contents/honours_project/run/$}
+verdiSetActWin -dock widgetDock_MTB_SOURCE_TAB_1
+debExit
