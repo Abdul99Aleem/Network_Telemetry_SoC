@@ -381,7 +381,8 @@ savePropStat = FALSE
 savePropDtl = TRUE
 [QtDialog]
 QwWarnMsgDlg = 490,335,600,250
-QwUserAskDlg = 638,417,324,130
+QwUserAskDlg = 638,415,324,134
+qWaveSignalDialog = 205,130,1145,626
 [Relationship]
 hideRecursiceNode = FALSE
 [Safety]
@@ -496,7 +497,7 @@ annotateFSMStateLimitNum = -1
 annotateFSMLimitNum = -1
 [SourceVHDL]
 vhSimType = ModelSim
-ohSimType = VerilogXL
+ohSimType = VCS
 [TclShell]
 nLineSize = 1024
 [Test]
@@ -504,6 +505,7 @@ verbose_progress = FALSE
 [TestBenchBrowser]
 -showUVMDynamicHierTreeWin = FALSE
 DataViewTooltip = TRUE
+hideWatchView = TRUE
 [Text]
 hdlTypeName = blue4
 hdlLibrary = blue4
@@ -722,21 +724,21 @@ isOneSearchVisible = TRUE
 [VIA.oneSearch.preference.vgifColumnSettingRC.setting0]
 parRuleSets = ""
 [VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column0]
+name = Message
+width = 2000
+visualIndex = 4
+isHidden = FALSE
+isUserChangeColumnVisible = FALSE
+[VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column1]
 name = Time
 width = 60
 visualIndex = 0
 isHidden = TRUE
 isUserChangeColumnVisible = FALSE
-[VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column1]
+[VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column2]
 name = Code
 width = 60
 visualIndex = 2
-isHidden = TRUE
-isUserChangeColumnVisible = FALSE
-[VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column2]
-name = Severity
-width = 60
-visualIndex = 1
 isHidden = TRUE
 isUserChangeColumnVisible = FALSE
 [VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column3]
@@ -746,10 +748,10 @@ visualIndex = 3
 isHidden = TRUE
 isUserChangeColumnVisible = FALSE
 [VIA.oneSearch.preference.vgifColumnSettingRC.setting0.column4]
-name = Message
-width = 2000
-visualIndex = 4
-isHidden = FALSE
+name = Severity
+width = 60
+visualIndex = 1
+isHidden = TRUE
 isUserChangeColumnVisible = FALSE
 [VIA.parRule]
 parRulePathInterForm = ""
@@ -834,8 +836,8 @@ AutoApplySeverityColor = TRUE
 scope_to_save_with_macro
 open_file_dir
 open_rc_file_dir
-getSignalForm = 0 0 800 479 100 30 100 30
-viewPort = 0 25 1059 273 100 65
+getSignalForm = 205 93 1145 626 357 528 738 256
+viewPort = 0 25 1600 325 175 65
 legendBackground = -c ID_BLACK
 valueBackground = -c ID_BLACK
 curveBackground = -c ID_BLACK
@@ -1001,7 +1003,8 @@ printBasic = 1 0 0 FALSE FALSE
 printDest = -printer {}
 printSignature = {%f %h %t} {}
 curveWindow_Drag&Drop_Mode = TRUE
-RecentFile1 = "\"/home/student/inter.fsdb\""
+RecentFile1 = "\"/home/student/Documents/honours_contents/honours_project/run/axi_interconnect_2x8.fsdb\""
+RecentFile2 = "\"/home/student/inter.fsdb\""
 open_file_time_range = FALSE
 legend_window_font = -f COURIER12 -c ID_CYAN5
 value_window_font = -f COURIER12 -c ID_CYAN5
@@ -1367,7 +1370,7 @@ AddImportArgument = FALSE
 LineBreakWithScope = TRUE
 StopAfterCompileOption = -s
 [wave.0]
-viewPort = 0 25 1059 273 100 65
+viewPort = 0 25 1600 325 175 65
 [wave.1]
 viewPort = 127 219 960 332 100 65
 [wave.2]

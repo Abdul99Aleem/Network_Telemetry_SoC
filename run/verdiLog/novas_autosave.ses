@@ -25,7 +25,9 @@ fdb_proj =
 fdb_campaign = 
 fdb_tool = 
 [hb]
-viewport = 0 26 1600 836 0 0 247 582
+postSimFile = /home/student/Documents/honours_contents/honours_project/run/axi_interconnect_2x8.fsdb
+syncTime = 205000
+viewport = 0 26 1600 836 0 0 208 582
 interactiveMode = False
 viewType = Source
 simulatorMode = False
@@ -48,10 +50,14 @@ signalPane = True
 SourceVerticalScrollLines = 5
 sdfCheckUndef = FALSE
 simFlow = FALSE
+[nMemoryManager]
+WaveformFile = /home/student/Documents/honours_contents/honours_project/run/axi_interconnect_2x8.fsdb
+UserActionNum = 0
+nMemWindowNum = 0
 [wave.0]
-viewPort = 0 25 1059 273 100 65
+viewPort = 0 25 1600 325 175 65
 primaryWindow = TRUE
-Empty = /home/student/Documents/honours_contents/honours_project/run/verdiLog/novas_autosave.ses.wave.0
+SessionFile = /home/student/Documents/honours_contents/honours_project/run/verdiLog/novas_autosave.ses.wave.0
 displayGrid = FALSE
 hierarchicalName = FALSE
 snap = TRUE

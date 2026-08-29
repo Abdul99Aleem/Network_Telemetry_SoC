@@ -1,0 +1,242 @@
+# ============================================================
+# RISC-V Network Telemetry SoC
+# Git ignore rules
+# ============================================================
+
+
+# ============================================================
+# 1. Simulation / Build Outputs
+# ============================================================
+
+# VCS compiled simulation executable and databases
+simv
+simv.*
+simv.daidir/
+
+# VCS compilation artifacts
+csrc/
+ucli.key
+
+# VCS generated logs / temporary files
+*.log
+*.vpd
+*.vcd
+*.shm
+*.trn
+*.dsn
+
+# Synopsys generated files
+*.sdb
+*.so
+*.a
+*.o
+*.db
+*.dat
+*.json
+
+# VCS / Verdi generated directories
+.daidir/
+vcs.dir/
+
+
+# ============================================================
+# 2. Waveform Databases
+# ============================================================
+
+# FSDB waveforms
+*.fsdb
+
+# Verdi generated data
+verdiLog/
+novas.conf
+novas.rc
+novas_dump.log
+
+# Verdi session / temporary files
+*.ses
+*.ses.config
+*.ses.wave.*
+*.ses.png
+
+
+# ============================================================
+# 3. Coverage / Profiling
+# ============================================================
+
+# VCS coverage
+simv.vdb/
+*.vdb
+urgReport/
+urgReport.*
+coverage/
+cov_work/
+dve_replay/
+
+
+# ============================================================
+# 4. Generated Simulation Files
+# ============================================================
+
+# Generic simulator-generated directories
+work/
+work_*/
+INCA_libs/
+xcelium.d/
+*.history
+*.key
+
+# Temporary simulator outputs
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+
+# ============================================================
+# 5. Generated C / Software Build Artifacts
+# ============================================================
+
+# Object files
+*.o
+*.obj
+*.elf
+*.exe
+*.out
+*.bin
+*.hex.generated
+
+# Generated assembly/listing files
+*.lst
+*.map
+
+# Compiler dependency files
+*.d
+
+
+# ============================================================
+# 6. Python Generated Files
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+
+# ============================================================
+# 7. IDE / Editor Files
+# ============================================================
+
+.vscode/
+.idea/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+.#*
+\#*\#
+
+# VS Code local history
+.history/
+
+
+# ============================================================
+# 8. Operating System Files
+# ============================================================
+
+.DS_Store
+.DS_Store?
+Thumbs.db
+Desktop.ini
+
+
+# ============================================================
+# 9. Temporary / Scratch Files
+# ============================================================
+
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+
+# Personal scratch files
+scratch/
+notes_private/
+
+
+# ============================================================
+# 10. Project Run Directory
+# ============================================================
+
+# Ignore generated simulation products inside run/
+run/*
+
+# Keep the directory itself in Git through .gitkeep if desired.
+!run/.gitkeep
+
+
+# ============================================================
+# 11. Generated Documentation Artifacts
+# ============================================================
+
+# PDF/HTML output generated from Markdown documentation
+doc/generated/
+docs/generated/
+
+# Pandoc / temporary document files
+*.aux
+*.toc
+*.out
+*.synctex.gz
+
+
+# ============================================================
+# 12. Generated Reports
+# ============================================================
+
+reports/generated/
+results/
+artifacts/
+
+
+# ============================================================
+# 13. Environment / Machine-specific Configuration
+# ============================================================
+
+.env
+.env.*
+*.local
+
+# Machine-specific simulator configuration
+local/
+machine_config/
+
+
+# ============================================================
+# 14. Keep Important Project Files
+# ============================================================
+
+# Explicitly keep source-controlled project directories.
+# These lines are documentation only and do not override rules above.
+
+# rtl/
+# tb/
+# scripts/
+# doc/
+# reg/
+# lib/
+# README.md
