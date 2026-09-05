@@ -1,0 +1,6 @@
+[submodule "aes/aes"]
+	path = aes/aes
+	url = https://github.com/secworks/aes.git
+[submodule "core/Cores-VeeR-EL2"]
+	path = core/Cores-VeeR-EL2
+	url = https://github.com/chipsalliance/Cores-VeeR-EL2.git
