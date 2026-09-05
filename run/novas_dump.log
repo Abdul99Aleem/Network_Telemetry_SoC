@@ -135,7 +135,7 @@ Limit information:
 cputime		unlimited
 filesize		unlimited
 datasize		unlimited
-stacksize		8194 kbytes
+stacksize		8192 kbytes
 coredumpsize		0 kbytes
 memoryuse		unlimited
 vmemoryuse		unlimited
@@ -328,8 +328,8 @@ argv[0]=./simv
 argv[1]=-l
 argv[2]=sim_aes_2master.log
 246 profile - 100
-          CPU/Mem usage: 0.010 sys,  0.110 user,  295.36M mem
-247 Elapsed time:    0:00:01    Sat Sep  5 13:38:53 2026
+          CPU/Mem usage: 0.010 sys,  0.100 user,  297.46M mem
+247 Elapsed time:    0:00:01    Sat Sep  5 13:44:50 2026
 248 User CPU time used: 0 seconds
 249 System CPU time used: 0 seconds
 250 pliAppInit
@@ -358,29 +358,29 @@ argv[2]=sim_aes_2master.log
 273 *Verdi* : Begin traversing the scope (tb_axi_interconnect_aes_2master), layer (0).
 274 *Verdi* : End of traversing.
 275 pliAppHDL_DumpVarComplete traverse var: profile - 
-          CPU/Mem usage: 0.010 sys,  0.120 user,  396.26M mem
-                   incr: 0.000 sys,  0.000 user,  8.45M mem
-                   accu: 0.000 sys,  0.000 user,  8.45M mem
-              accu incr: 0.000 sys,  0.000 user,  8.45M mem
+          CPU/Mem usage: 0.020 sys,  0.110 user,  398.36M mem
+                   incr: 0.000 sys,  0.010 user,  8.45M mem
+                   accu: 0.000 sys,  0.010 user,  8.45M mem
+              accu incr: 0.000 sys,  0.010 user,  8.45M mem
 
           Count usage: 1807 var,  1251 idcode,  636 callback
                  incr: 1807 var,  1251 idcode,  636 callback
                  accu: 1807 var,  1251 idcode,  636 callback
             accu incr: 1807 var,  1251 idcode,  636 callback
-276 Elapsed time:    0:00:01    Sat Sep  5 13:38:53 2026
+276 Elapsed time:    0:00:02    Sat Sep  5 13:44:51 2026
 277 User CPU time used: 0 seconds
 278 System CPU time used: 0 seconds
 279 pliAppHDL_DumpVarComplete: profile - 
-          CPU/Mem usage: 0.010 sys,  0.120 user,  397.31M mem
+          CPU/Mem usage: 0.020 sys,  0.110 user,  399.41M mem
                    incr: 0.000 sys,  0.000 user,  1.05M mem
-                   accu: 0.000 sys,  0.000 user,  9.51M mem
+                   accu: 0.000 sys,  0.010 user,  9.51M mem
               accu incr: 0.000 sys,  0.000 user,  1.05M mem
 
           Count usage: 1807 var,  1251 idcode,  636 callback
                  incr: 0 var,  0 idcode,  0 callback
                  accu: 1807 var,  1251 idcode,  636 callback
             accu incr: 0 var,  0 idcode,  0 callback
-280 Elapsed time:    0:00:01    Sat Sep  5 13:38:53 2026
+280 Elapsed time:    0:00:02    Sat Sep  5 13:44:51 2026
 281 User CPU time used: 0 seconds
 282 System CPU time used: 0 seconds
 283 sps_call_fsdbDumpMDA_vd_main at 0 : ../tb/tb_axi_interconnect_aes_2master.sv(1253)
@@ -388,7 +388,7 @@ argv[2]=sim_aes_2master.log
 285 *Verdi* : Enable +mda and +packedmda dumping.
 286 *Verdi* : End of traversing the MDAs.
 287 pliAppHDL_DumpVarComplete traverse var: profile - 
-          CPU/Mem usage: 0.010 sys,  0.120 user,  397.31M mem
+          CPU/Mem usage: 0.020 sys,  0.110 user,  399.41M mem
                    incr: 0.000 sys,  0.000 user,  0.00M mem
                    accu: 0.000 sys,  0.000 user,  0.00M mem
               accu incr: 0.000 sys,  0.000 user,  0.00M mem
@@ -397,11 +397,11 @@ argv[2]=sim_aes_2master.log
                  incr: 3852 var,  3852 idcode,  13 callback
                  accu: 3852 var,  3852 idcode,  13 callback
             accu incr: 3852 var,  3852 idcode,  13 callback
-288 Elapsed time:    0:00:01    Sat Sep  5 13:38:53 2026
+288 Elapsed time:    0:00:02    Sat Sep  5 13:44:51 2026
 289 User CPU time used: 0 seconds
 290 System CPU time used: 0 seconds
 291 pliAppHDL_DumpVarComplete: profile - 
-          CPU/Mem usage: 0.010 sys,  0.120 user,  397.45M mem
+          CPU/Mem usage: 0.020 sys,  0.110 user,  399.55M mem
                    incr: 0.000 sys,  0.000 user,  0.14M mem
                    accu: 0.000 sys,  0.000 user,  0.14M mem
               accu incr: 0.000 sys,  0.000 user,  0.14M mem
@@ -410,33 +410,33 @@ argv[2]=sim_aes_2master.log
                  incr: 0 var,  0 idcode,  0 callback
                  accu: 3852 var,  3852 idcode,  13 callback
             accu incr: 0 var,  0 idcode,  0 callback
-292 Elapsed time:    0:00:01    Sat Sep  5 13:38:53 2026
+292 Elapsed time:    0:00:02    Sat Sep  5 13:44:51 2026
 293 User CPU time used: 0 seconds
 294 System CPU time used: 0 seconds
 295 End of simulation at 1615000
-296 Memory usage: 397.451 M
+296 Memory usage: 399.548 M
 297 Maximum resident set size: 130 MB
 298 Hard page faults: 0
-299 Soft page faults: 13623
-300 Elapsed time:    0:00:01    Sat Sep  5 13:38:53 2026
+299 Soft page faults: 13494
+300 Elapsed time:    0:00:02    Sat Sep  5 13:44:51 2026
 301 User CPU time used: 0 seconds
 302 System CPU time used: 0 seconds
 303 Begin FSDB profile info:
-304 FSDB Writer : bc1(2599) bcn(17471) mtf/stf(0/0)
-FSDB Writer elapsed time : flush(0.027986) io wait(0.000000) theadpool wait(0.000000)
+304 FSDB Writer : bc1(2599) bcn(17481) mtf/stf(0/0)
+FSDB Writer elapsed time : flush(0.028585) io wait(0.000000) theadpool wait(0.000000)
 FSDB Writer cpu time : MT Compression : 0
 305 End FSDB profile info
-306 FSDB closed. Name: axi_interconnect_2x8.fsdb Size: 55725
+306 FSDB closed. Name: axi_interconnect_2x8.fsdb Size: 55747
 307 Parallel profile     - ProducerThread:1 ConsumerThread:1 Buffer:64MB
-308                      - BlockUsed:1 Acquire:0 BufferUsed:318396
+308                      - BlockUsed:1 Acquire:0 BufferUsed:318566
 309                      - Flush:4 Expand:0 ProducerWait:0 ConsumerWait:0
-310                      - MainProducerTime:0.152106765 TotalConsumerTime:0.000000000
-311                      - ElapsedTime:0.212532000
-312 Producer   0 profile - BlockUsed:2 Acquire:0 BufferUsed:318396
+310                      - MainProducerTime:0.148629820 TotalConsumerTime:0.000000000
+311                      - ElapsedTime:0.260180000
+312 Producer   0 profile - BlockUsed:2 Acquire:0 BufferUsed:318566
 313 Consumer   0 profile - Affinity:-1 CPUTime:0.000000000 LifeTime:0.000000000 (-nan%)
-314                      - BlockUsed:2 Acquire:0 BufferUsed:318396
+314                      - BlockUsed:2 Acquire:0 BufferUsed:318566
 315 SimExit
-316 Elapsed time:    0:00:02    Sat Sep  5 13:38:54 2026
+316 Elapsed time:    0:00:02    Sat Sep  5 13:44:51 2026
 317 User CPU time used: 0 seconds
 318 System CPU time used: 0 seconds
 319 Sim process exit

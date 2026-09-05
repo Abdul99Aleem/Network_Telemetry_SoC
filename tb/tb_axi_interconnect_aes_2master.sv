@@ -1269,7 +1269,7 @@ module tb_axi_interconnect_aes_2master;
                     m0_awlen=0; m0_awsize=2; m0_awburst=2'b01;
                     m0_awlock=0; m0_awcache=0; m0_awprot=0; m0_awqos=0;
                     m0_awuser=0; m0_awvalid=1;
-                    m0_wdata=32'h03020100; m0_wstrb=4'hF;
+                    m0_wdata=32'h0c0d0e0f; m0_wstrb=4'hF;
                     m0_wlast=1; m0_wuser=0; m0_wvalid=1;
                     @(posedge clk);
                     while (!(m0_awready && m0_awvalid)) @(posedge clk);
@@ -1292,7 +1292,7 @@ module tb_axi_interconnect_aes_2master;
                     m1_awlen=0; m1_awsize=2; m1_awburst=2'b01;
                     m1_awlock=0; m1_awcache=0; m1_awprot=0; m1_awqos=0;
                     m1_awuser=0; m1_awvalid=1;
-                    m1_wdata=32'h07060504; m1_wstrb=4'hF;
+                    m1_wdata=32'h08090a0b; m1_wstrb=4'hF;
                     m1_wlast=1; m1_wuser=0; m1_wvalid=1;
                     @(posedge clk);
                     while (!(m1_awready && m1_awvalid)) @(posedge clk);
@@ -1317,8 +1317,8 @@ module tb_axi_interconnect_aes_2master;
     task automatic verify_aes_registers;
         begin
             $display("\n=== VERIFY AES REGISTER OWNERSHIP AFTER CONTENTION ===");
-            master_read_single(0,S6_BASE+32'h08,32'h03020100,8'h31);
-            master_read_single(1,S6_BASE+32'h0c,32'h07060504,8'h32);
+            master_read_single(0,S6_BASE+32'h08,32'h0c0d0e0f,8'h31);
+            master_read_single(1,S6_BASE+32'h0c,32'h08090a0b,8'h32);
         end
     endtask
 
@@ -1331,18 +1331,18 @@ module tb_axi_interconnect_aes_2master;
             // transaction is active, without involving VeeR or another IP.
             fork
                 begin
-                    master_write_single(0,S6_BASE+32'h10,32'h0b0a0908,4'hF,8'h41);
-                    master_write_single(0,S6_BASE+32'h14,32'h0f0e0d0c,4'hF,8'h42);
-                    master_write_single(0,S6_BASE+32'h18,32'h33221100,4'hF,8'h43);
-                    master_write_single(0,S6_BASE+32'h1c,32'h77665544,4'hF,8'h44);
-                    master_write_single(0,S6_BASE+32'h20,32'hbbaa9988,4'hF,8'h45);
-                    master_write_single(0,S6_BASE+32'h24,32'hffeeddcc,4'hF,8'h46);
+                    master_write_single(0,S6_BASE+32'h10,32'h04050607,4'hF,8'h41);
+                    master_write_single(0,S6_BASE+32'h14,32'h00010203,4'hF,8'h42);
+                    master_write_single(0,S6_BASE+32'h18,32'hccddeeff,4'hF,8'h43);
+                    master_write_single(0,S6_BASE+32'h1c,32'h8899aabb,4'hF,8'h44);
+                    master_write_single(0,S6_BASE+32'h20,32'h44556677,4'hF,8'h45);
+                    master_write_single(0,S6_BASE+32'h24,32'h00112233,4'hF,8'h46);
                     master_write_single(0,S6_BASE+32'h00,32'h00000001,4'hF,8'h47);
                 end
                 begin
                     repeat (2) @(posedge clk);
-                    master_read_single(1,S6_BASE+32'h08,32'h03020100,8'h51);
-                    master_read_single(1,S6_BASE+32'h0c,32'h07060504,8'h52);
+                    master_read_single(1,S6_BASE+32'h08,32'h0c0d0e0f,8'h51);
+                    master_read_single(1,S6_BASE+32'h0c,32'h08090a0b,8'h52);
                 end
             join
 
