@@ -1,314 +1,124 @@
 # ============================================================
-# RISC-V Network Telemetry SoC
-# Git ignore rules
+# RISC-V Network Telemetry SoC — git ignore rules
+#
+# Principle: RTL, testbenches, docs, flow scripts and VCS filelists
+# are versioned. Everything a tool generates (binaries, logs,
+# waveforms, GUI state) is ignored.
 # ============================================================
 
-
-# ============================================================
-# 1. Simulation / Build Outputs
-# ============================================================
-
-# VCS compiled simulation executable and databases
+# ------------------------------------------------------------
+# VCS build / run products (anywhere in the tree)
+# ------------------------------------------------------------
 simv
 simv.*
 simv.daidir/
-
-# VCS compilation artifacts
+simv.vdb/
 csrc/
 ucli.key
+*.so
+*.a
+*.o
+vc_hdrs.h
+*_archive_*.so
 
-# VCS generated logs / temporary files
+# VCS / simulation logs and reports
 *.log
+vcs_run.log
+sim_stdout.log
+verdi_config_file
+
+# Waveforms and dumps
+*.fsdb
 *.vpd
 *.vcd
 *.shm
 *.trn
 *.dsn
-
-# Synopsys generated files
-*.sdb
-*.so
-*.a
-*.o
-*.db
-*.dat
-*.json
-
-# VCS / Verdi generated directories
-.daidir/
-vcs.dir/
-
-
-# ============================================================
-# 2. Waveform Databases
-# ============================================================
-
-# FSDB waveforms
-*.fsdb
-
-# Verdi generated data
+*.vdb
 verdiLog/
 novas.conf
 novas.rc
 novas_dump.log
-
-# Verdi session / temporary files
+novas.*.log*
 *.ses
 *.ses.config
 *.ses.wave.*
 *.ses.png
-
-
-# ============================================================
-# 3. Coverage / Profiling
-# ============================================================
-
-# VCS coverage
-simv.vdb/
-*.vdb
+DVEfiles/
+dve_replay/
 urgReport/
 urgReport.*
 coverage/
 cov_work/
-dve_replay/
-
-
-# ============================================================
-# 4. Generated Simulation Files
-# ============================================================
-
-# Generic simulator-generated directories
 work/
 work_*/
 INCA_libs/
 xcelium.d/
-*.history
+.cm/
+*.cm
+
+# Coverage / profiling databases
+*.sdb
+*.db
+*.dat
 *.key
 
-# Temporary simulator outputs
-*.tmp
-*.temp
-*.bak
-*.swp
-*.swo
-*~
+# ------------------------------------------------------------
+# run/ — simulation scratch area
+# Ignore everything EXCEPT the versioned flow assets below.
+# (VCS filelists *.f already tracked stay tracked.)
+# ------------------------------------------------------------
+run/*
+!run/.gitkeep
+!run/*.f
+!run/p1_full_flow.csh
+!run/p1_hello_world_ahb.csh
+!run/p1_open_verdi.csh
+!run/p1_verdi_ahb.tcl
+!run/p1_wave.rc
+!run/axi_wave.rc
+!run/wave.rc
 
-
-# ============================================================
-# 5. Generated C / Software Build Artifacts
-# ============================================================
-
-# Object files
-*.o
-*.obj
+# ------------------------------------------------------------
+# Software / C build products
+# ------------------------------------------------------------
 *.elf
 *.exe
 *.out
 *.bin
 *.hex.generated
-
-# Generated assembly/listing files
 *.lst
 *.map
-
-# Compiler dependency files
 *.d
+program.hex
 
-
-# ============================================================
-# 6. Python Generated Files
-# ============================================================
-
-__pycache__/
-*.py[cod]
-*$py.class
-
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-
-# ============================================================
-# 7. IDE / Editor Files
-# ============================================================
-
-.vscode/
-.idea/
-
-# Vim
-*.swp
-*.swo
-*~
-
-# Emacs
-.#*
-\#*\#
-
-# VS Code local history
-.history/
-
-
-# ============================================================
-# 8. Operating System Files
-# ============================================================
-
-.DS_Store
-.DS_Store?
-Thumbs.db
-Desktop.ini
-
-
-# ============================================================
-# 9. Temporary / Scratch Files
-# ============================================================
-
-tmp/
-temp/
-*.tmp
-*.bak
-*.orig
-
-# Personal scratch files
-scratch/
-notes_private/
-
-
-# ============================================================
-# 10. Project Run Directory
-# ============================================================
-
-# Ignore generated simulation products inside run/
-run/*
-
-# Keep the directory itself in Git through .gitkeep if desired.
-!run/.gitkeep
-
-
-# ============================================================
-# 11. Generated Documentation Artifacts
-# ============================================================
-
-# PDF/HTML output generated from Markdown documentation
+# ------------------------------------------------------------
+# Generated docs / reports
+# ------------------------------------------------------------
 doc/generated/
-docs/generated/
-
-# Pandoc / temporary document files
-*.aux
-*.toc
-*.out
-*.synctex.gz
-
-
-# ============================================================
-# 12. Generated Reports
-# ============================================================
-
 reports/generated/
 results/
 artifacts/
+*.aux
+*.toc
+*.synctex.gz
 
-
-# ============================================================
-# 13. Environment / Machine-specific Configuration
-# ============================================================
-
-.env
-.env.*
-*.local
-
-# Machine-specific simulator configuration
-local/
-machine_config/
-
-
-# ============================================================
-# 14. Keep Important Project Files
-# ============================================================
-
-# Explicitly keep source-controlled project directories.
-# These lines are documentation only and do not override rules above.
-
-# rtl/
-# tb/
-# scripts/
-# doc/
-# reg/
-# lib/
-# README.md
-#
-# =============================================================================
-# .gitignore  --  AXI4 Interconnect Honours Project
-# Covers VCS, Verdi, and general build artefacts.
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# VCS compile and simulation outputs
-# -----------------------------------------------------------------------------
-run/simv
-run/simv.daidir/
-run/csrc/
-run/ucli.key
-run/*.log
-run/sim_stdout.log
-run/verdi_config_file
-
-# VCS incremental compile working files
-*.cm
-*.so
-*.a
-*.o
-
-# -----------------------------------------------------------------------------
-# Verdi / FSDB waveform outputs
-# -----------------------------------------------------------------------------
-run/*.fsdb
-run/*.vpd
-run/*.vdb
-run/verdiLog/
-verdiLog/
-
-# Verdi session and auto-save files
-novas.conf
-novas.rc
-novas.*.log*
-novas_dump.log
-*.ses
-*.ses.config
-*.ses.png
-*.ses.wave.*
-
-# Verdi per-session config files (contain machine/PID-specific data)
-run/novas.conf
-run/novas.rc
-*.conf
-*.rc
-!run/wave.rc
-
-# -----------------------------------------------------------------------------
-# Synopsys tool licence and key files
-# -----------------------------------------------------------------------------
-*.key
-DVEfiles/
-
-# -----------------------------------------------------------------------------
-# Python
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# Python / env / IDE / OS
+# ------------------------------------------------------------
 __pycache__/
 *.py[cod]
-*.pyo
-.Python
-*.egg-info/
-dist/
-build/
-
-# -----------------------------------------------------------------------------
-# Editor and OS artefacts
-# -----------------------------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+.env
+.env.*
+.idea/
+.vscode/
+*.iml
 .DS_Store
 Thumbs.db
 *.swp
@@ -316,17 +126,15 @@ Thumbs.db
 *~
 *.bak
 *.orig
-.idea/
-.vscode/
-*.iml
+\#*\#
+.\#*
 
-# -----------------------------------------------------------------------------
-# Placeholder / scratch files
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# Scratch
+# ------------------------------------------------------------
+tmp/
+temp/
+scratch/
+notes_private/
 main.c
 test.c
-
-# -----------------------------------------------------------------------------
-# Temporary and log files (root level)
-# -----------------------------------------------------------------------------
-*.log

@@ -1,0 +1,177 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; AES AXI4-Lite Testbench – Verdi Wave RC
+; Location: waves/axi_wave.rc  (survives make clean)
+;
+; Signals grouped by function:
+;   1.  Clock & Reset
+;   2.  AXI Write Address Channel (AW)
+;   3.  AXI Write Data Channel (W)
+;   4.  AXI Write Response Channel (B)
+;   5.  AXI Read Address Channel (AR)
+;   6.  AXI Read Data Channel (R)
+;   7.  AXI Slave Internal CSR Bus
+;   8.  CSR Key & Text Registers
+;   9.  CSR Status (CTRL / STATUS)
+;  10.  CSR Output Register
+;  11.  Control FSM
+;  12.  AES Cipher Core (Encryption)
+;  13.  AES Inverse Cipher Core (Decryption)
+;  14.  kdone Tracker
+; ============================================================
+
+; Window Layout <x> <y> <width> <height> <signalwidth> <valuewidth>
+viewPort 0 0 1600 900 220 100
+
+; FSDB file
+openDirFile -d / -i 0 "" "/home/student/Desktop/Honours-34/IPs/aes_core-master/sim/vcs_axi/wave.fsdb"
+
+; signal spacing
+signalSpacing 5
+
+; Show full simulation range
+zoom 0.000000 758500.000000
+cursor 0.000000
+marker 0.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+; ============================================================
+; Group 1: Clock & Reset
+; ============================================================
+addGroup "Clock & Reset"
+addSignal -h 15 /tb_axi_master/aclk
+addSignal -h 15 -holdScope aresetn
+
+; ============================================================
+; Group 2: AXI Write Address Channel (AW)
+; ============================================================
+addGroup "AXI Write Address (AW)"
+addSignal -h 15 /tb_axi_master/m_awvalid
+addSignal -h 15 -holdScope m_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_awaddr[7:0]
+
+; ============================================================
+; Group 3: AXI Write Data Channel (W)
+; ============================================================
+addGroup "AXI Write Data (W)"
+addSignal -h 15 /tb_axi_master/m_wvalid
+addSignal -h 15 -holdScope m_wready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_wdata[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_wstrb[3:0]
+
+; ============================================================
+; Group 4: AXI Write Response Channel (B)
+; ============================================================
+addGroup "AXI Write Response (B)"
+addSignal -h 15 /tb_axi_master/m_bvalid
+addSignal -h 15 -holdScope m_bready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_bresp[1:0]
+
+; ============================================================
+; Group 5: AXI Read Address Channel (AR)
+; ============================================================
+addGroup "AXI Read Address (AR)"
+addSignal -h 15 /tb_axi_master/m_arvalid
+addSignal -h 15 -holdScope m_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_araddr[7:0]
+
+; ============================================================
+; Group 6: AXI Read Data Channel (R)
+; ============================================================
+addGroup "AXI Read Data (R)"
+addSignal -h 15 /tb_axi_master/m_rvalid
+addSignal -h 15 -holdScope m_rready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_rdata[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope m_rresp[1:0]
+
+; ============================================================
+; Group 7: AXI Slave Internal CSR Bus
+; ============================================================
+addGroup "AXI Slave Internal CSR Bus"
+addSignal -h 15 /tb_axi_master/dut/u_axi_slave/csr_wr_en
+addSignal -h 15 -UNSIGNED -HEX -holdScope csr_wr_addr[5:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope csr_wdata[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope csr_wstrb[3:0]
+addSignal -h 15 -holdScope csr_rd_en
+addSignal -h 15 -UNSIGNED -HEX -holdScope csr_rd_addr[5:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope csr_rdata[31:0]
+
+; ============================================================
+; Group 8: CSR Key & Text Registers
+; ============================================================
+addGroup "CSR Key & Text Registers"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_master/dut/u_csr_regs/key_reg[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope text_reg[127:0]
+addSignal -h 15 -holdScope start_pulse
+addSignal -h 15 -holdScope decrypt_mode
+
+; ============================================================
+; Group 9: CSR Status (CTRL / STATUS)
+; ============================================================
+addGroup "CSR Status (CTRL / STATUS)"
+addSignal -h 15 /tb_axi_master/dut/u_csr_regs/done_status
+addSignal -h 15 -holdScope busy
+addSignal -h 15 -holdScope done_event
+
+; ============================================================
+; Group 10: CSR Output Register
+; ============================================================
+addGroup "CSR Output Register"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_master/dut/u_ctrl_fsm/output_reg[127:0]
+
+; ============================================================
+; Group 11: Control FSM
+; ============================================================
+addGroup "Control FSM"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_master/dut/u_ctrl_fsm/state[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope next_state[2:0]
+addSignal -h 15 -holdScope busy
+addSignal -h 15 -holdScope done_event
+addSignal -h 15 -holdScope start_pulse
+addSignal -h 15 -holdScope decrypt_mode
+addSignal -h 15 -holdScope dec_mode_r
+addSignal -h 15 -holdScope cipher_ld
+addSignal -h 15 -holdScope inverse_kld
+addSignal -h 15 -holdScope inverse_ld
+
+; ============================================================
+; Group 12: AES Cipher Core (Encryption)
+; ============================================================
+addGroup "AES Cipher Core (Encrypt)"
+addSignal -h 15 /tb_axi_master/dut/u_cipher/ld
+addSignal -h 15 -holdScope done
+addSignal -h 15 -UNSIGNED -HEX -holdScope key[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope text_in[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope text_out[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope dcnt[3:0]
+
+; ============================================================
+; Group 13: AES Inverse Cipher Core (Decryption)
+; ============================================================
+addGroup "AES Inverse Cipher Core (Decrypt)"
+addSignal -h 15 /tb_axi_master/dut/u_inv_cipher/kld
+addSignal -h 15 -holdScope ld
+addSignal -h 15 -holdScope done
+addSignal -h 15 -UNSIGNED -HEX -holdScope key[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope text_in[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope text_out[127:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope dcnt[3:0]
+addSignal -h 15 -holdScope kdone
+
+; ============================================================
+; Group 14: kdone Tracker (in aes_axi top)
+; ============================================================
+addGroup "kdone Tracker"
+addSignal -h 15 /tb_axi_master/dut/inverse_kld
+addSignal -h 15 -UNSIGNED -HEX -holdScope kdone_cnt[3:0]
+addSignal -h 15 -holdScope kdone_active
+addSignal -h 15 -holdScope inverse_kdone

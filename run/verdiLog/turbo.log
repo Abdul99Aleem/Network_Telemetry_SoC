@@ -1,3 +1,0 @@
-Command Line: /home/student/snps_tools_target/verdi/U-2023.03-SP1/platform/LINUXAMD64/bin/Novas -ssf aes_axi_slave.fsdb -dbdir simv.daidir
-uname(Linux vlsi45.vce.ac.in 4.18.0-553.el8_10.x86_64 #1 SMP Fri May 24 13:05:10 UTC 2024 x86_64)
-au time 306.962834 4.290151 2.910095 delta 321036288 321036288 total 892129280 892129280

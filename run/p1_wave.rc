@@ -1,0 +1,106 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; VeeR EL2 default_ahb hello_world – Verdi Wave RC
+; Location: honours_project/run/p1_wave.rc
+; Load:   cd /tmp/opencode/veer_p1
+;         nWave -ssf dump.fsdb -sswr /home/student/Documents/honours_project/run/p1_wave.rc &
+;   or in Verdi:  verdi -ssf dump.fsdb -dbdir simv.daidir &
+;   then nWave console: restore via File -> Restore Signal (this file)
+;
+; NOTE: default_ahb is AHB-Lite only — there are NO AXI signals here.
+; Scope is tb_top (TOP = tb_top). FSDB needs simv.daidir KDB for hierarchy.
+;
+; Signals grouped by function:
+;   1.  Clock & Reset
+;   2.  CPU progress (PC / insn / mailbox PASS)
+;   3.  IFU AHB-Lite master (fetch-only)
+;   4.  LSU AHB-Lite master (mailbox writes)
+;   5.  Mux + backing memory
+; ============================================================
+
+; Window Layout <x> <y> <width> <height> <signalwidth> <valuewidth>
+viewPort 0 0 1600 900 260 110
+
+; FSDB file (absolute so `verdi`/`nWave` finds it from anywhere)
+openDirFile -d / -i 0 "" "/tmp/opencode/veer_p1/dump.fsdb"
+
+; signal spacing
+signalSpacing 5
+
+; Show boot -> TEST_PASSED range (full sim ends 2642000 ns)
+zoom 0.000000 1200000.000000
+cursor 117000.000000
+marker 117000.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+; ============================================================
+; Group 1: Clock & Reset
+; ============================================================
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_top/core_clk
+addSignal -h 15 -holdScope rst_l
+addSignal -h 15 -holdScope porst_l
+
+; ============================================================
+; Group 2: CPU progress (PC / insn / mailbox PASS)
+; ============================================================
+addGroup "2 CPU progress"
+addSignal -h 15 -UNSIGNED -HEX /tb_top/trace_rv_i_address_ip[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_rv_i_insn_ip[31:0]
+addSignal -h 15 -holdScope trace_rv_i_valid_ip
+addSignal -h 15 -holdScope mailbox_write
+addSignal -h 15 -UNSIGNED -HEX -holdScope mailbox_data[63:0]
+
+; ============================================================
+; Group 3: IFU AHB-Lite master (fetch-only, no HWDATA)
+; ============================================================
+addGroup "3 IFU AHB"
+addSignal -h 15 -UNSIGNED -HEX /tb_top/ic_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_htrans[1:0]
+addSignal -h 15 -holdScope ic_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hsize[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hburst[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hprot[3:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hrdata[63:0]
+addSignal -h 15 -holdScope ic_hready
+addSignal -h 15 -holdScope ic_hresp
+
+; ============================================================
+; Group 4: LSU AHB-Lite master (mailbox sb to 0xD0580000 here)
+; ============================================================
+addGroup "4 LSU AHB"
+addSignal -h 15 -UNSIGNED -HEX /tb_top/lsu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_htrans[1:0]
+addSignal -h 15 -holdScope lsu_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hsize[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hburst[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hprot[3:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hrdata[63:0]
+addSignal -h 15 -holdScope lsu_hready
+addSignal -h 15 -holdScope lsu_hresp
+
+; ============================================================
+; Group 5: Mux + backing memory
+; ============================================================
+addGroup "5 Mux + Mem"
+addSignal -h 15 -UNSIGNED -HEX /tb_top/mux_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope mux_htrans[1:0]
+addSignal -h 15 -holdScope mux_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope mux_hsize[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope mux_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope mux_hrdata[63:0]
+addSignal -h 15 -holdScope mux_hready
+addSignal -h 15 -holdScope mux_hresp
+addSignal -h 15 -UNSIGNED -HEX -holdScope lmem_hrdata[63:0]
+addSignal -h 15 -holdScope lmem_hready
+addSignal -h 15 -holdScope lmem_hresp
