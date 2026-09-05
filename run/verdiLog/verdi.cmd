@@ -1,80 +1,50 @@
-verdiSetActWin -dock widgetDock_<Watch>
+verdiSetActWin -dock widgetDock_<Message>
+simSetSimulator "-vcssv" -exec "simv" -args
+debImport "-dbdir" "simv.daidir"
+debLoadSimResult /home/student/Documents/honours_project/run/aes_axi_slave.fsdb
 wvCreateWindow
-wvSetPosition -win $_nWave2 {("G1" 0)}
-wvOpenFile -win $_nWave2 \
-           {/home/student/Documents/honours_contents/honours_project/run/axi_interconnect_2x8.fsdb}
-verdiSetActWin -dock widgetDock_MTB_SOURCE_TAB_1
-verdiSetActWin -win $_nWave2
 wvGetSignalOpen -win $_nWave2
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
-wvGetSignalSetScope -win $_nWave2 \
-           "/tb_axi_interconnect_2x8/Unnamed_\$tb_axi_interconnect_2x8_sv_1237"
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8/dut"
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
-wvGetSignalSetSignalFilter -win $_nWave2 "valid"
-wvSetPosition -win $_nWave2 {("G1" 0)}
-wvSetPosition -win $_nWave2 {("G1" 0)}
+wvGetSignalSetScope -win $_nWave2 "/tb_aes_axi_slave"
+wvSetPosition -win $_nWave2 {("G1" 10)}
+wvSetPosition -win $_nWave2 {("G1" 10)}
 wvAddSignal -win $_nWave2 -clear
 wvAddSignal -win $_nWave2 -group {"G1" \
-}
-wvSetPosition -win $_nWave2 {("G1" 0)}
-wvGetSignalOpen -win $_nWave2
-wvSetPosition -win $_nWave2 {("G1" 2)}
-wvSetPosition -win $_nWave2 {("G1" 2)}
-wvAddSignal -win $_nWave2 -clear
-wvAddSignal -win $_nWave2 -group {"G1" \
-{/tb_axi_interconnect_2x8/m0_arready} \
-{/tb_axi_interconnect_2x8/m0_arvalid} \
+{/tb_aes_axi_slave/s_axi_awaddr\[31:0\]} \
+{/tb_aes_axi_slave/s_axi_awready} \
+{/tb_aes_axi_slave/s_axi_awvalid} \
+{/tb_aes_axi_slave/s_axi_bready} \
+{/tb_aes_axi_slave/s_axi_bresp\[1:0\]} \
+{/tb_aes_axi_slave/s_axi_bvalid} \
+{/tb_aes_axi_slave/s_axi_wdata\[31:0\]} \
+{/tb_aes_axi_slave/s_axi_wready} \
+{/tb_aes_axi_slave/s_axi_wstrb\[3:0\]} \
+{/tb_aes_axi_slave/s_axi_wvalid} \
 }
 wvAddSignal -win $_nWave2 -group {"G2" \
 }
-wvSelectSignal -win $_nWave2 {( "G1" 1 2 )} 
-wvSetPosition -win $_nWave2 {("G1" 2)}
-wvSetPosition -win $_nWave2 {("G1" 2)}
-wvSetPosition -win $_nWave2 {("G1" 2)}
+wvSelectSignal -win $_nWave2 {( "G1" 1 2 3 4 5 6 7 8 9 10 )} 
+wvSetPosition -win $_nWave2 {("G1" 10)}
+wvSetPosition -win $_nWave2 {("G1" 10)}
+wvSetPosition -win $_nWave2 {("G1" 10)}
 wvAddSignal -win $_nWave2 -clear
 wvAddSignal -win $_nWave2 -group {"G1" \
-{/tb_axi_interconnect_2x8/m0_arready} \
-{/tb_axi_interconnect_2x8/m0_arvalid} \
+{/tb_aes_axi_slave/s_axi_awaddr\[31:0\]} \
+{/tb_aes_axi_slave/s_axi_awready} \
+{/tb_aes_axi_slave/s_axi_awvalid} \
+{/tb_aes_axi_slave/s_axi_bready} \
+{/tb_aes_axi_slave/s_axi_bresp\[1:0\]} \
+{/tb_aes_axi_slave/s_axi_bvalid} \
+{/tb_aes_axi_slave/s_axi_wdata\[31:0\]} \
+{/tb_aes_axi_slave/s_axi_wready} \
+{/tb_aes_axi_slave/s_axi_wstrb\[3:0\]} \
+{/tb_aes_axi_slave/s_axi_wvalid} \
 }
 wvAddSignal -win $_nWave2 -group {"G2" \
 }
-wvSelectSignal -win $_nWave2 {( "G1" 1 2 )} 
-wvSetPosition -win $_nWave2 {("G1" 2)}
+wvSelectSignal -win $_nWave2 {( "G1" 1 2 3 4 5 6 7 8 9 10 )} 
+wvSetPosition -win $_nWave2 {("G1" 10)}
 wvGetSignalClose -win $_nWave2
-verdiDockWidgetHide -dock widgetDock_<Watch>
-srcTBSetHiddenView -view WatchView
-wvGetSignalOpen -win $_nWave2
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
-wvSetPosition -win $_nWave2 {("G1" 3)}
-wvSetPosition -win $_nWave2 {("G1" 3)}
-wvAddSignal -win $_nWave2 -clear
-wvAddSignal -win $_nWave2 -group {"G1" \
-{/tb_axi_interconnect_2x8/m0_arready} \
-{/tb_axi_interconnect_2x8/m0_arvalid} \
-{/tb_axi_interconnect_2x8/m0_araddr\[31:0\]} \
-}
-wvAddSignal -win $_nWave2 -group {"G2" \
-}
-wvSelectSignal -win $_nWave2 {( "G1" 3 )} 
-wvSetPosition -win $_nWave2 {("G1" 3)}
-wvSetPosition -win $_nWave2 {("G1" 3)}
-wvSetPosition -win $_nWave2 {("G1" 3)}
-wvAddSignal -win $_nWave2 -clear
-wvAddSignal -win $_nWave2 -group {"G1" \
-{/tb_axi_interconnect_2x8/m0_arready} \
-{/tb_axi_interconnect_2x8/m0_arvalid} \
-{/tb_axi_interconnect_2x8/m0_araddr\[31:0\]} \
-}
-wvAddSignal -win $_nWave2 -group {"G2" \
-}
-wvSelectSignal -win $_nWave2 {( "G1" 3 )} 
-wvSetPosition -win $_nWave2 {("G1" 3)}
-wvGetSignalClose -win $_nWave2
-verdiSetActWin -dock widgetDock_<Inst._Tree>
-verdiSetActWin -win $_nWave2
-wvGetSignalOpen -win $_nWave2
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
-wvGetSignalSetScope -win $_nWave2 "/tb_axi_interconnect_2x8"
+wvZoomAll -win $_nWave2
+wvZoomAll -win $_nWave2
+wvSetCursor -win $_nWave2 693728.092368 -snap {("G2" 0)}
+debExit

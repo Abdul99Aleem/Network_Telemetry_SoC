@@ -11,7 +11,7 @@ Line2 = Save Open Database Information: Yes
 Line3 = Path Option: Absolute Paths
 Line4 = Windows Option: All Windows
 [OneSearch]
-isExisted = TRUE
+isExisted = FALSE
 [TestBench]
 ConstrViewShow = 0
 InherViewShow = 0
@@ -25,13 +25,16 @@ fdb_proj =
 fdb_campaign = 
 fdb_tool = 
 [hb]
-postSimFile = /home/student/Documents/honours_contents/honours_project/run/axi_interconnect_2x8.fsdb
-syncTime = 205000
-viewport = 0 26 1600 836 0 0 208 582
+postSimFile = /home/student/Documents/honours_project/run/aes_axi_slave.fsdb
+syncTime = 0
+viewport = 0 26 1600 836 0 0 257 1598
+activeNode = "tb_aes_axi_slave"
+activeScope = "tb_aes_axi_slave"
+activeFile = "../tb/tb_aes_axi_slave.sv"
 interactiveMode = False
 viewType = Source
 simulatorMode = False
-sourceBeginLine = 0
+sourceBeginLine = 2
 baMode = False
 srcLineNum = True
 AutoWrap = True
@@ -48,16 +51,25 @@ DnDtraceCrossHierOnly = True
 leadingZero = False
 signalPane = True
 SourceVerticalScrollLines = 5
+Scope1 = "tb_aes_axi_slave"
+multipleSelection = 1 2 2 0 0
 sdfCheckUndef = FALSE
 simFlow = FALSE
+[hb.design]
+importCmd = "-dbdir" "simv.daidir" 
+invokeDir = /home/student/Documents/honours_project/run
+[hb.sourceTab.1]
+scope = tb_aes_axi_slave
+File = /home/student/Documents/honours_project/tb/tb_aes_axi_slave.sv
+Line = 3
 [nMemoryManager]
-WaveformFile = /home/student/Documents/honours_contents/honours_project/run/axi_interconnect_2x8.fsdb
+WaveformFile = /home/student/Documents/honours_project/run/aes_axi_slave.fsdb
 UserActionNum = 0
 nMemWindowNum = 0
 [wave.0]
-viewPort = 0 25 1600 325 175 65
+viewPort = 0 25 1600 442 175 58
 primaryWindow = TRUE
-SessionFile = /home/student/Documents/honours_contents/honours_project/run/verdiLog/novas_autosave.ses.wave.0
+SessionFile = /home/student/Documents/honours_project/run/verdiLog/novas_autosave.ses.wave.0
 displayGrid = FALSE
 hierarchicalName = FALSE
 snap = TRUE

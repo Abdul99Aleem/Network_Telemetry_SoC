@@ -1,5 +1,8 @@
-0
-36
+3        
+0 timescale.v
+0 /home/student/snps_tools_target/vcs/U-2023.03/etc/systemverilog/timescale.v
+0 ../rtl/aes/timescale.v
+35
 +itf+/home/student/snps_tools_target/vcs/U-2023.03/linux64/lib/vcsdp_lite.tab
 +vcsd1
 +vpi
@@ -21,36 +24,36 @@
 -Mxcflags= -pipe -fPIC -I/home/student/snps_tools_target/vcs/U-2023.03/include
 -Mxllcflags=
 -P
+-Xufe=2steps
 -debug_access+all
+-f aes_axi_2master_run.f
 -fsdb
 -full64
 -gen_obj
--o simv
+-kdb
+-l
 -picarchive
 -sverilog
 /home/student/snps_tools_target/vcs/U-2023.03/linux64/bin/vcs1
-simv
+compile_aes_axi_2master.log
 /home/student/snps_tools_target/verdi/U-2023.03-SP1/share/PLI/VCS/LINUX64/verdi.tab
-../tb/tb_axi_interconnect_2x8.sv
-../rtl/interconnects/arbiter.v
-../rtl/interconnects/priority_encoder.v
-../rtl/interconnects/axi_interconnect.v
-../rtl/interconnects/axi_interconnect_wrap_2x8.v
-85
+aes_axi_2master_run.f
+84
 which_declare=declare -f
 sentaurus_HOME=/home/student/snps_tools_target/sentaurus/T-2022.03-SP2
+no_proxy=localhost,127.0.0.0/8,::1
 XMODIFIERS=@im=ibus
 XDG_VTNR=2
-XDG_SESSION_TYPE=x11
-XDG_SESSION_ID=14
+XDG_SESSION_TYPE=wayland
+XDG_SESSION_ID=2
 XDG_SESSION_DESKTOP=gnome
 XDG_SEAT=seat0
 XDG_RUNTIME_DIR=/run/user/1000
 XDG_MENU_PREFIX=gnome-
 XDG_DATA_DIRS=/home/student/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share/:/usr/share/
 XDG_CURRENT_DESKTOP=GNOME
-XAUTHORITY=/run/user/1000/gdm/Xauthority
-WINDOWPATH=2
+XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.TJ8ZU3
+WAYLAND_DISPLAY=wayland-0
 VTE_VERSION=5204
 VMR_MODE_FLAG=64
 VERDI_LIC=27021@14.139.1.126
@@ -59,6 +62,7 @@ VENDOR=unknown
 VCS_PATHMAP_PRELOAD_DONE=1
 VCS_MX_HOME_INTERNAL=1
 VCS_MODE_FLAG=64
+VCS_LOG_FILE=compile_aes_axi_2master.log
 VCS_LIC=27021@14.139.1.126
 VCS_HOME=/home/student/snps_tools_target/vcs/U-2023.03
 VCS_EXEC_DONE=1
@@ -71,17 +75,18 @@ TOOL_HOME=/home/student/snps_tools_target/vcs/U-2023.03/linux64
 S_COLORS=auto
 SSH_AUTH_SOCK=/run/user/1000/keyring/ssh
 SSH_ASKPASS=/usr/libexec/openssh/gnome-ssh-askpass
+SNPS_VERDI_INTERNAL_LP_XML_NEW_FLOW=1
 SNPS_VCS_CLANG_PATH=/home/student/snps_tools_target/vcs/U-2023.03/linux64/clang
 SNPS_INTERNAL_VCS_LINUX_OS=linux
-SESSION_MANAGER=local/unix:@/tmp/.ICE-unix/4665,unix/unix:/tmp/.ICE-unix/4665
+SESSION_MANAGER=local/unix:@/tmp/.ICE-unix/2514,unix/unix:/tmp/.ICE-unix/2514
 SCRNAME=vcs
 SCRIPT_NAME=vcs
-RV_ROOT=/home/student/Documents/honours_contents/Cores-VeeR-EL2
 QT_IM_MODULE=ibus
 PRIMETIME_LIC=27021@14.139.1.126
 PRIMETIME=/home/student/snps_tools_target/prime/U-2022.12-SP3
 OVA_UUM=0
 OSTYPE=linux
+NO_PROXY=localhost,127.0.0.0/8,::1
 MODULES_USE_COMPAT_VERSION=0
 MODULES_RUN_QUARANTINE=LD_LIBRARY_PATH LD_PRELOAD
 MODULES_CMD=/usr/share/Modules/libexec/modulecmd.tcl
@@ -91,7 +96,6 @@ MODULEPATH=/etc/scl/modulefiles:/etc/scl/modulefiles:/etc/scl/modulefiles:/usr/s
 LOADEDMODULES=
 LESSOPEN=||/usr/bin/lesspipe.sh %s
 LC_ALL=C
-KDEDIRS=/usr
 HOSTTYPE=x86_64-linux
 HISTCONTROL=ignoredups
 GUESTFISH_RESTORE=\e[0m
@@ -99,14 +103,13 @@ GUESTFISH_PS1=\[\e[1;32m\]><fs>\[\e[0;31m\]
 GUESTFISH_OUTPUT=\e[0m
 GUESTFISH_INIT=\e[1;34m
 GROUP=student
-GNOME_TERMINAL_SERVICE=:1.128
-GNOME_TERMINAL_SCREEN=/org/gnome/Terminal/screen/ec0ed97d_d986_4a1e_a4f8_ff42a8ce3dbb
+GNOME_TERMINAL_SERVICE=:1.78
+GNOME_TERMINAL_SCREEN=/org/gnome/Terminal/screen/524836a5_4070_4248_864b_2c0c34ac6570
 GNOME_DESKTOP_SESSION_ID=this-is-deprecated
 GJS_DEBUG_TOPICS=JS ERROR;JS LOG
 GJS_DEBUG_OUTPUT=stderr
 GDM_LANG=en_IN.UTF-8
 GDMSESSION=gnome
-GDK_BACKEND=x11
 FINESIM_LIC=27021@14.139.1.126
 FINESIM_HOME=/home/student/snps_tools_target/finesim/U-2023.03
 DESKTOP_SESSION=gnome
@@ -120,16 +123,21 @@ BASH_FUNC_scl%%=() {  if [ "$1" = "load" -o "$1" = "unload" ]; then_ eval "modul
 BASH_FUNC_module%%=() {  _module_raw "$@" 2>&1_}
 BASH_FUNC_ml%%=() {  module ml "$@"_}
 BASH_FUNC__module_raw%%=() {  unset _mlshdbg;_ if [ "${MODULES_SILENT_SHELL_DEBUG:-0}" = '1' ]; then_ case "$-" in _ *v*x*)_ set +vx;_ _mlshdbg='vx'_ ;;_ *v*)_ set +v;_ _mlshdbg='v'_ ;;_ *x*)_ set +x;_ _mlshdbg='x'_ ;;_ *)_ _mlshdbg=''_ ;;_ esac;_ fi;_ unset _mlre _mlIFS;_ if [ -n "${IFS+x}" ]; then_ _mlIFS=$IFS;_ fi;_ IFS=' ';_ for _mlv in ${MODULES_RUN_QUARANTINE:-};_ do_ if [ "${_mlv}" = "${_mlv##*[!A-Za-z0-9_]}" -a "${_mlv}" = "${_mlv#[0-9]}" ]; then_ if [ -n "`eval 'echo ${'$_mlv'+x}'`" ]; then_ _mlre="${_mlre:-}${_mlv}_modquar='`eval 'echo ${'$_mlv'}'`' ";_ fi;_ _mlrv="MODULES_RUNENV_${_mlv}";_ _mlre="${_mlre:-}${_mlv}='`eval 'echo ${'$_mlrv':-}'`' ";_ fi;_ done;_ if [ -n "${_mlre:-}" ]; then_ eval `eval ${_mlre} /usr/bin/tclsh /usr/share/Modules/libexec/modulecmd.tcl bash '"$@"'`;_ else_ eval `/usr/bin/tclsh /usr/share/Modules/libexec/modulecmd.tcl bash "$@"`;_ fi;_ _mlstatus=$?;_ if [ -n "${_mlIFS+x}" ]; then_ IFS=$_mlIFS;_ else_ unset IFS;_ fi;_ unset _mlre _mlv _mlrv _mlIFS;_ if [ -n "${_mlshdbg:-}" ]; then_ set -$_mlshdbg;_ fi;_ unset _mlshdbg;_ return $_mlstatus_}
-BABEL_LIBDIR=/usr/lib64/openbabel3
-BABEL_DATADIR=/usr/share/openbabel
 0
 0
-7
-1787994623 ../rtl/interconnects/axi_interconnect_wrap_2x8.v
-1787991178 ../rtl/interconnects/axi_interconnect.v
-1787991179 ../rtl/interconnects/priority_encoder.v
-1787991177 ../rtl/interconnects/arbiter.v
-1787997754 ../tb/tb_axi_interconnect_2x8.sv
+14
+1788595692 ../tb/tb_axi_interconnect_aes_2master.sv
+1788587585 ../rtl/aes/ip/timescale.v
+1788587585 ../rtl/aes/ip/aes_sbox.v
+1788587585 ../rtl/aes/ip/aes_rcon.v
+1788587585 ../rtl/aes/ip/aes_key_expand_128.v
+1788587585 ../rtl/aes/ip/aes_cipher_top.v
+1788590202 ../rtl/aes/aes_axi_slave.v
+1788583433 ../rtl/interconnects/priority_encoder.v
+1788583433 ../rtl/interconnects/arbiter.v
+1788583433 ../rtl/interconnects/axi_interconnect.v
+1788583433 ../rtl/interconnects/axi_interconnect_wrap_2x8.v
+1788595701 aes_axi_2master_run.f
 1685268911 /home/student/snps_tools_target/verdi/U-2023.03-SP1/share/PLI/VCS/LINUX64/verdi.tab
 1677384340 /home/student/snps_tools_target/vcs/U-2023.03/linux64/lib/vcsdp_lite.tab
 4
@@ -137,5 +145,5 @@ BABEL_DATADIR=/usr/share/openbabel
 1677385060 /home/student/snps_tools_target/vcs/U-2023.03/linux64/lib/liberrorinf.so
 1677385018 /home/student/snps_tools_target/vcs/U-2023.03/linux64/lib/libsnpsmalloc.so
 1677385055 /home/student/snps_tools_target/vcs/U-2023.03/linux64/lib/libvfs.so
-1787997760 simv.daidir
+1788595729 simv.daidir
 -1 partitionlib

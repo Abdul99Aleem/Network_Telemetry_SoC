@@ -1,6 +1,6 @@
 psSimBaseName                      	simv
-psLogFileName                      	NULL
-psDaiDir                           	/home/student/Documents/honours_contents/honours_project/run/simv.daidir
+psLogFileName                      	compile_aes_axi_2master.log
+psDaiDir                           	simv.daidir
 destPath                           	csrc/
 fSharedMasterElab                  	0
 fHsimPCSharedLibSpecified          	0
