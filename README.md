@@ -63,6 +63,21 @@ make -f $RV_ROOT/tools/Makefile target=default_ahb snapshot=default_ahb TEST=hel
 verdi -ssf dump.fsdb -dbdir simv.daidir -sswr ~/Documents/honours_project/run/p1_wave.rc &
 ```
 
+## Phase 2 — AHB-Lite fabric (PASS)
+
+Project fabric (`rtl/ahb/`, `rtl/soc_top.sv`): IFU/LSU masters, LSU priority,
+IMEM `0x0000_0000` + DMEM `0x0001_0000` (32 KB each), default ERROR slave.
+SoC boots from IMEM (`p2_soc` snapshot, `reset_vec=0`).
+
+```csh
+cd ~/Documents/honours_project/run
+./p2_full_flow.csh      # TB1 directed fabric (16/16) + TB2 VeeR-through-fabric
+cd /tmp/opencode/veer_p2/tb1
+verdi -ssf p2_fabric.fsdb -dbdir simv.daidir -sswr ~/Documents/honours_project/run/p2_wave.rc &
+cd ../tb2
+verdi -ssf p2_veer_soc.fsdb -dbdir simv.daidir -sswr ~/Documents/honours_project/run/p2_veer_wave.rc &
+```
+
 ## AES / AXI regression (isolated subsystem, pre-existing)
 
 ```csh
@@ -88,7 +103,7 @@ ct `69c4e0d86a7b0430d8cdb78070b4c55a`.
 | Phase | Status |
 |---|---|
 | 1 VeeR bring-up | PASS (`doc/Phase1_VeeR_Bringup_Completion_Record.md`) |
-| 2 AHB-Lite fabric | NOT STARTED |
+| 2 AHB-Lite fabric | PASS (`doc/Phase2_AHB_Fabric_Completion_Record.md`) |
 | 3 AES integration | NOT STARTED (isolated AXI-AES PASS pre-exists) |
 | 4 Telemetry + IRQ | NOT STARTED |
 | 5 Full SoC | NOT STARTED |

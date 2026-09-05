@@ -1,0 +1,60 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; Phase-2 TB1 directed fabric test – Verdi Wave RC
+; Load:  cd /tmp/opencode/veer_p2
+;        verdi -ssf p2_fabric.fsdb -dbdir simv.daidir -sswr \
+;          /home/student/Documents/honours_project/run/p2_wave.rc &
+; Covers user gates: read/write, decode, select, HREADY/HRESP,
+; unmapped ERROR, back-to-back, arbitration.
+; ============================================================
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/tmp/opencode/veer_p2/tb1/p2_fabric.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 1000.000000
+cursor 136.000000
+marker 136.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_ahb_fabric/clk
+addSignal -h 15 -holdScope reset_n
+
+addGroup "2 LSU master"
+addSignal -h 15 -UNSIGNED -HEX /tb_ahb_fabric/lsu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_htrans[1:0]
+addSignal -h 15 -holdScope lsu_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hsize[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hrdata[63:0]
+addSignal -h 15 -holdScope lsu_hready
+addSignal -h 15 -holdScope lsu_hresp
+
+addGroup "3 IFU master"
+addSignal -h 15 -UNSIGNED -HEX /tb_ahb_fabric/ifu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ifu_htrans[1:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ifu_hrdata[63:0]
+addSignal -h 15 -holdScope ifu_hready
+addSignal -h 15 -holdScope ifu_hresp
+
+addGroup "4 Slave select + response"
+addSignal -h 15 /tb_ahb_fabric/dut/imem_hsel
+addSignal -h 15 -holdScope dmem_hsel
+addSignal -h 15 -holdScope def_hsel
+addSignal -h 15 -UNSIGNED -HEX /tb_ahb_fabric/dut/u_dmem/hrdata[63:0]
+addSignal -h 15 -holdScope hreadyout
+addSignal -h 15 -holdScope hresp
+addSignal -h 15 /tb_ahb_fabric/dut/u_default/hreadyout
+addSignal -h 15 -holdScope hresp

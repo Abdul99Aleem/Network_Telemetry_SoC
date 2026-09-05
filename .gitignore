@@ -71,11 +71,9 @@ xcelium.d/
 run/*
 !run/.gitkeep
 !run/*.f
-!run/p1_full_flow.csh
-!run/p1_hello_world_ahb.csh
-!run/p1_open_verdi.csh
-!run/p1_verdi_ahb.tcl
-!run/p1_wave.rc
+!run/p[0-9]_*.csh
+!run/p[0-9]_*.tcl
+!run/p[0-9]_*.rc
 !run/axi_wave.rc
 !run/wave.rc
 

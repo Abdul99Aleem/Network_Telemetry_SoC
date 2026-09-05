@@ -1,0 +1,60 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; Phase-2 TB2 VeeR+project-fabric test – Verdi Wave RC
+; Load:  cd /tmp/opencode/veer_p2
+;        verdi -ssf p2_veer_soc.fsdb -dbdir simv.daidir -sswr \
+;          /home/student/Documents/honours_project/run/p2_veer_wave.rc &
+; Covers user gates: VeeR reset/fetch/execute, project memory access,
+; software through fabric. PASS at ~1085 ns (DMEM[2]==0xFF).
+; ============================================================
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/tmp/opencode/veer_p2/tb2/p2_veer_soc.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 1200.000000
+cursor 1085.000000
+marker 1085.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_veer_p2_soc/core_clk
+addSignal -h 15 -holdScope rst_l
+addSignal -h 15 -holdScope porst_l
+
+addGroup "2 CPU fetch/execute"
+addSignal -h 15 -UNSIGNED -HEX /tb_veer_p2_soc/trace_rv_i_address_ip[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_rv_i_insn_ip[31:0]
+addSignal -h 15 -holdScope trace_rv_i_valid_ip
+
+addGroup "3 IFU AHB (IMEM fetch)"
+addSignal -h 15 -UNSIGNED -HEX /tb_veer_p2_soc/ic_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_htrans[1:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hrdata[63:0]
+addSignal -h 15 -holdScope ic_hready
+addSignal -h 15 -holdScope ic_hresp
+
+addGroup "4 LSU AHB (DMEM store/load)"
+addSignal -h 15 -UNSIGNED -HEX /tb_veer_p2_soc/lsu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_htrans[1:0]
+addSignal -h 15 -holdScope lsu_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hrdata[63:0]
+addSignal -h 15 -holdScope lsu_hready
+addSignal -h 15 -holdScope lsu_hresp
+
+addGroup "5 Fabric select"
+addSignal -h 15 /tb_veer_p2_soc/u_soc/u_fabric/imem_hsel
+addSignal -h 15 -holdScope dmem_hsel
+addSignal -h 15 -holdScope def_hsel
