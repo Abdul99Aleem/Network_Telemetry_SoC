@@ -4,14 +4,14 @@
 into a 128-bit record, encrypts that record with a hardware AES-128 engine,
 and reports it over UART — all driven by a VeeR EL2 RISC-V core.**
 
-![last commit](https://img.shields.io/github/last-commit/Abdul99Aleem/honours_project)
-![commit activity](https://img.shields.io/github/commit-activity/m/Abdul99Aleem/honours_project)
-![contributors](https://img.shields.io/github/contributors/Abdul99Aleem/honours_project)
-![code size](https://img.shields.io/github/languages/code-size/Abdul99Aleem/honours_project)
-![top language](https://img.shields.io/github/languages/top/Abdul99Aleem/honours_project)
-![repo size](https://img.shields.io/github/repo-size/Abdul99Aleem/honours_project)
+![last commit](https://img.shields.io/github/last-commit/Abdul99Aleem/Network_Telemetry_SoC)
+![commit activity](https://img.shields.io/github/commit-activity/m/Abdul99Aleem/Network_Telemetry_SoC)
+![contributors](https://img.shields.io/github/contributors/Abdul99Aleem/Network_Telemetry_SoC)
+![code size](https://img.shields.io/github/languages/code-size/Abdul99Aleem/Network_Telemetry_SoC)
+![top language](https://img.shields.io/github/languages/top/Abdul99Aleem/Network_Telemetry_SoC)
+![repo size](https://img.shields.io/github/repo-size/Abdul99Aleem/Network_Telemetry_SoC)
 
-- **Repo:** <https://github.com/Abdul99Aleem/honours_project> (`main`; built on `feature/sw-build-ahb-rw`)
+- **Repo:** <https://github.com/Abdul99Aleem/Network_Telemetry_SoC> (`main`; built on `feature/sw-build-ahb-rw`)
 - **Toolchain:** Synopsys VCS U-2023.03 + Verdi U-2023.03-SP1 (FSDB), bare-metal RISC-V GCC
 - **Built and verified in:** RTL simulation + bare-metal C (FPGA/silicon later)
 - **Verification methodology:** directed self-checking SystemVerilog today →
@@ -319,7 +319,7 @@ commands to reproduce them.
 ## 7. Repository layout
 
 ```text
-honours_project/
+Network_Telemetry_SoC/
 ├── README.md
 ├── .gitignore                  # generated files only (see Git policy)
 ├── .gitmodules                 # 1 submodule: core/Cores-VeeR-EL2
@@ -357,11 +357,15 @@ Notes:
 ## 8. Fresh clone / setup on a new machine
 
 ```bash
-git clone https://github.com/Abdul99Aleem/honours_project.git
-cd honours_project
+git clone https://github.com/Abdul99Aleem/Network_Telemetry_SoC.git
+cd Network_Telemetry_SoC
 git submodule update --init core/Cores-VeeR-EL2    # CPU, pinned at 06ad26a
 git submodule status                               # should show ' 06ad26a...' (leading space)
 ```
+
+> On the lab machine this checkout lives at
+> `/home/student/Documents/honours_project`, and that is the path the flow
+> scripts hard-code — see [§10](#10-hard-coded-paths) before moving it.
 
 Synopsys environment (lab machine):
 

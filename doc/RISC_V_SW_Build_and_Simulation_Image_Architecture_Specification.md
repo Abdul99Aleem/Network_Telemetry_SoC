@@ -901,7 +901,7 @@ addr_xor:    iccm=0 dccm=0  (from snapshot; loader must mirror if non-zero)
 # 18. Directory Structure
 
 ```text
-honours_project/
+Network_Telemetry_SoC/
 ├── rtl/                  (existing)
 ├── sw/                   NEW
 │   ├── src/

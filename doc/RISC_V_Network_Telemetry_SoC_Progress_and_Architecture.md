@@ -1352,7 +1352,7 @@ for the two-master run.
 The current relevant RTL organization is:
 
 ``` text
-honours_project/
+Network_Telemetry_SoC/
 |
 +-- rtl/
 |   |
