@@ -140,17 +140,17 @@ the manual record.
 
 | Metric | Value |
 |---|---|
-| Commits on `main` | **17** |
+| Commits on `main` | **18** |
 | Active window | **28 days** — 2026-08-29 → 2026-09-26 |
 | Developers | **1** (two git identities: lab account + GitHub) |
-| Tracked files | **110** |
-| Lines committed in `HEAD` (excl. CPU submodule) | **40,549** |
+| Tracked files | **111** |
+| Lines committed in `HEAD` (excl. CPU submodule) | **40,939** |
 | → RTL (`rtl/`) | 7,392 lines / 26 files |
 | → Testbenches (`tb/`) | 6,638 lines / 10 benches |
 | → Flow (`run/`) | 1,419 lines / 26 files (11 filelists, 7 `csh` flows, Verdi RCs) |
-| → Firmware (`sw/`) | 783 lines / 6 files |
+| → Firmware (`sw/`) | 788 lines / 6 files |
 | → Scripts (`scripts/`) | 590 lines / 3 generators |
-| → Documentation (`doc/`) | 19,220 lines / 15 documents |
+| → Documentation (`doc/`) | 19,603 lines / 16 documents |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
 | Regression groups passing | **5** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated) |
 | Regression groups in progress | **1** (Phase 3 UART end-to-end on the SoC) |
@@ -159,10 +159,10 @@ Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
 
 ```bash
-git rev-list --count HEAD                                    # 17 commits
+git rev-list --count HEAD                                    # 18 commits
 git log --reverse --format=%ad --date=short | head -1        # first commit
-git ls-files | wc -l                                         # 110 tracked files
-git archive HEAD | tar -xO | wc -l                           # 40549 committed lines
+git ls-files | wc -l                                         # 111 tracked files
+git archive HEAD | tar -xO | wc -l                           # 40939 committed lines
 for d in rtl tb run scripts doc sw; do                       # per-directory
   printf '%-8s %6d %3d files\n' "$d" \
     "$(git archive HEAD $d | tar -xO | wc -l)" \
@@ -635,9 +635,9 @@ git check-ignore rtl/uart/uart_axi_slave.v tb/tb_uart_axi_slave.sv; echo $?     
 git fetch && git rev-list --left-right --count origin/main...HEAD                 # 0  0
 
 # 4. Tracker numbers still match §4.1
-git rev-list --count HEAD          # 17
-git ls-files | wc -l               # 110
-git archive HEAD | tar -xO | wc -l # 40549
+git rev-list --count HEAD          # 18
+git ls-files | wc -l               # 111
+git archive HEAD | tar -xO | wc -l # 40939
 
 # 5. Every path referenced above exists
 for p in rtl/soc_top.sv rtl/ahb rtl/aes rtl/uart rtl/interconnects scripts doc sw \
