@@ -1,0 +1,98 @@
+// ============================================================================
+// Project : RISC-V Network Telemetry SoC
+// Script  : run/fw_wave.rc
+// Desc    : Verdi wave setup for fw0 (C firmware on the SoC) — plan §5.3.
+//
+//           Load with:
+//             cd /home/student/Documents/honours_project/build/sim/fw0
+//             setenv DISPLAY :0
+//             verdi -ssf p2_veer_soc.fsdb -dbdir simv.daidir \
+//                   -sswr /home/student/Documents/honours_project/run/fw_wave.rc &
+//
+//           Groups map 1:1 onto the plan §5.3 read/write-cycle checklist:
+//             1 Clock & Reset        preconditions
+//             2 CPU fetch/execute    checklist 1 cross-check (trace port)
+//             3 IFU AHB (reads)      checklist 1
+//             4 LSU AHB (r/w)        checklists 2, 3, 4, 8
+//             5 Fabric select        checklists 5, 7 (one-hot, no def_hsel)
+//             6 Arbitration          checklist 6 (LSU wins over IFU)
+//             7 Cycle monitor        checklist aggregates + PASS/FAIL cause
+// ============================================================================
+
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/home/student/Documents/honours_project/build/sim/fw0/p2_veer_soc.fsdb"
+
+signalSpacing 5
+
+zoom 1300.000000 1900.000000
+
+top 0
+markerPos 0
+cursor 1365.000000
+marker 1365.000000
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_veer_p2_soc/core_clk
+addSignal -h 15 -holdScope rst_l
+addSignal -h 15 -holdScope porst_l
+addSignal -h 15 -UNSIGNED -HEX -holdScope reset_vector[31:0]
+
+addGroup "2 CPU fetch/execute"
+addSignal -h 15 -UNSIGNED -HEX /tb_veer_p2_soc/trace_rv_i_address_ip[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_rv_i_insn_ip[31:0]
+addSignal -h 15 -holdScope trace_rv_i_valid_ip
+addSignal -h 15 -holdScope trace_rv_i_exception_ip
+
+addGroup "3 IFU AHB (reads)"
+addSignal -h 15 -UNSIGNED -HEX /tb_veer_p2_soc/ic_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_htrans[1:0]
+addSignal -h 15 -holdScope ic_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hrdata[63:0]
+addSignal -h 15 -holdScope ic_hready
+addSignal -h 15 -holdScope ic_hresp
+
+addGroup "4 LSU AHB (reads+writes)"
+addSignal -h 15 -UNSIGNED -HEX /tb_veer_p2_soc/lsu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_htrans[1:0]
+addSignal -h 15 -holdScope lsu_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hrdata[63:0]
+addSignal -h 15 -holdScope lsu_hready
+addSignal -h 15 -holdScope lsu_hresp
+
+addGroup "5 Fabric select"
+addSignal -h 15 /tb_veer_p2_soc/u_soc/u_fabric/imem_hsel
+addSignal -h 15 -holdScope dmem_hsel
+addSignal -h 15 -holdScope uart_hsel
+addSignal -h 15 -holdScope def_hsel
+addSignal -h 15 -UNSIGNED -HEX -holdScope mux_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope addr_sel[2:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope data_sel[2:0]
+addSignal -h 15 -holdScope data_is_lsu
+
+addGroup "6 Arbitration"
+addSignal -h 15 /tb_veer_p2_soc/u_soc/u_fabric/lsu_active
+addSignal -h 15 -holdScope addr_is_lsu
+addSignal -h 15 -holdScope mux_active
+
+addGroup "7 AHB cycle monitor"
+addSignal -h 15 -UNSIGNED -DEC /tb_veer_p2_soc/u_ahb_mon/cycles
+addSignal -h 15 -UNSIGNED -DEC -holdScope imem_rd
+addSignal -h 15 -UNSIGNED -DEC -holdScope imem_wr
+addSignal -h 15 -UNSIGNED -DEC -holdScope dmem_rd
+addSignal -h 15 -UNSIGNED -DEC -holdScope dmem_wr
+addSignal -h 15 -UNSIGNED -DEC -holdScope uart_rd
+addSignal -h 15 -UNSIGNED -DEC -holdScope uart_wr
+addSignal -h 15 -UNSIGNED -DEC -holdScope def_sel
+addSignal -h 15 -UNSIGNED -DEC -holdScope bus_err
+addSignal -h 15 -holdScope reported
+addSignal -h 15 -holdScope stop

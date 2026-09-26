@@ -99,7 +99,7 @@ make dis                    # build/firmware.dis
 | **G10** | L4 | byte-per-token, LF, never Intel HEX | 670 / 4 hex byte tokens, no `:10…` records, no CR | ✅ |
 | **G11** | L4 | `objdump` first instruction == head of `imem.mem` | `00018117` == `17 81 01 00` | ✅ |
 | **G12** | L4 | manifest with `Init mode: Mode 1`, `addr_xor: iccm=0 dccm=0` | both present | ✅ |
-| **G13** | — | `firmware.ihex` never copied to the sim dir | **not yet exercised — needs a sim run (Step 3a)** | ⏳ |
+| **G13** | — | `firmware.ihex` never copied to the sim dir | gated inside `make sim`; `PASS no *.ihex in build/sim/fw0` — **2026-09-26** | ✅ |
 
 Full console logs: `make -C sw all` + `make -C sw inspect`.
 
@@ -269,15 +269,15 @@ progress on a core with interrupts disabled.
 
 ---
 
-## 8. Not covered here
+## 8. Not covered here — resolved by Step 3a
 
-| Item | Why | Where |
-| ---- | --- | ----- |
-| G13 (`firmware.ihex` never reaches the sim dir) | needs a simulation run | Step 3a |
-| TB plusarg image loading (`D9`, `S7`/`S7b`) | touches `rtl/ahb/ahb_sram.sv` + `tb/tb_veer_p2_soc.sv` | Step 3a |
-| AHB read/write-cycle monitor + Verdi checklist | Step 3a | plan §5 |
-| Root `Makefile`, `sim/Makefile`, `build/snapshots/p2_soc` (`D6`) | Step 3a build wiring | plan §5.1 |
-| `README.md` status/index rows | left untouched — file currently carries an unrelated in-flight edit from a parallel session | — |
+| Item | Then | Now |
+| ---- | ---- | --- |
+| G13 (`firmware.ihex` never reaches the sim dir) | needed a simulation run | ✅ **gated inside `make sim`**, see §4 |
+| TB plusarg image loading (`D9`, `S7`/`S7b`/`S8`) | deferred to Step 3a | ⏳ **still deferred** — a filename stand-in (`cp imem.mem p2_prog.hex`) is used instead, because `S7b` would remove `rtl/ahb/ahb_sram.sv`'s `initial` and break the parallel session's committed Phase-3 flow. Recorded as **D9-deferred** in `Firmware_Build_and_AHB_RW_Verification_Plan.md` §5.1 and the Step-3a record §3.4 |
+| AHB read/write-cycle monitor + Verdi checklist | Step 3a | ✅ `tb/tb_ahb_cycle_monitor.sv` + plan §5.3 all 8 rows — `Firmware_Build_and_AHB_RW_Verification_Record.md` |
+| Root `Makefile`, `sim/Makefile`, `build/snapshots/p2_soc` (`D6`) | Step 3a build wiring | ✅ delivered |
+| `README.md` status/index rows | left untouched — file carries an unrelated in-flight edit from a parallel session | still open |
 
 ---
 
@@ -290,4 +290,7 @@ progress on a core with interrupts disabled.
 - [x] Gate labels match plan §4.2 exactly (G1–G13)
 - [x] Two image-generation defects found, fixed, and regression-guarded
 - [x] Amendment A1 evidence recorded
-- [ ] G13 — deferred to Step 3a
+- [x] **G13 — now PASS** (2026-09-26): gated inside `make sim`; see §4 and
+      `Firmware_Build_and_AHB_RW_Verification_Record.md` §5.4
+
+**Gates G1–G13: all PASS. Step 2 is complete.**

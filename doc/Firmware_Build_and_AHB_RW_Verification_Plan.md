@@ -196,6 +196,56 @@ the first hex token of the image.
 **Resolution:** both image rules run `sed -i 's/\r$//'`; guarded by **G10**.
 Analysis: record §5.2. **Feed back to spec §6.2 as an amendment.**
 
+### N8 — Verdi stops on a modal license warning, and no X11 automation exists
+
+**Found while opening the Step-3a FSDB.** Verdi logs
+
+```console
+*WARN* Verdi-Elite (Verdi) license is not available.
+       Try to check out Verdi-Apex (Verdi-Ultra) license.
+```
+
+and then presents a blocking modal `Warning` window (a Motif
+`warningDialog_popup` wrapped by a Qt `Qt-subapplication "Novas"`). Verdi does
+not proceed until it is dismissed; behind it, Verdi runs correctly as
+`Verdi-Apex`. Blindly clicking guessed coordinates once killed the tool by
+hitting the WM close control.
+
+**Resolution:** none of `xdotool`, `wmctrl`, `python3-xlib` or `pyautogui`
+are installed, so dismissal is scripted with `ctypes` against
+`libX11.so.6`/`libXtst.so.6` (find the window with `xwininfo -root -children`,
+send `Return` via `XTestFakeKeyEvent`, else click the Qt OK button). Note the
+box runs **Python 3.6** — `subprocess.run(capture_output=True)` does not
+exist; use `stdout=subprocess.PIPE, universal_newlines=True`.
+**Still open:** embed this in `sim/Makefile`'s `verdi` target.
+
+### N9 — `%t`/`$finish` print in **ps**; `$time`, `fsdbreport` and the wave RC use **ns**
+
+**Found while interpreting the PASS timestamp.** The run prints
+`[90915000] P2_TB2_RESULT: PASS` and `$finish at simulation time 91015000`.
+Under `-timescale=1ns/10ps` with 1 ps precision, `%t` and `$finish` report in
+**ps** → the run is **91 015 ns = 91.015 µs**, PASS at **90 915 ns**.
+Read as ns, a 90 µs run looks like 90 ms — apparently far past the 1.9 ms
+monitor watchdog and the `#2000000` testbench timeout, which would have been
+read as a hang that never happened.
+
+**Resolution:** all analysis windows below are in **ns**, matching
+`fsdbreport -bt/-et` and the `zoom`/`cursor`/`marker` commands in
+`run/fw_wave.rc`. Recorded in the cycle-monitor comments.
+
+### N10 — a bare 4-state `reg` used in a condition silently disables its `always` block
+
+**Found while bringing up `tb/tb_ahb_cycle_monitor.sv`.** `reported` and
+`stop_d` were declared `reg reported;` with no initialiser. `reg` is 4-state
+and initialises to `X`, and `if (!X)` is **never true** — so the entire
+counting block *and* the watchdog were skipped while the module compiled,
+elaborated and appeared in the hierarchy normally. The monitor produced no
+output at all rather than an error.
+
+**Resolution:** `reg reported = 1'b0; reg stop_d = 1'b0;`. Rule: **any `reg`
+used in a condition must be explicitly initialised.** Guarded by the dual-token
+gate in `make sim`, which fails if `AHB_RW_MONITOR` is absent.
+
 ---
 
 # 2. Scope mapping — requested step → frozen spec
@@ -403,9 +453,9 @@ $(BUILD)/dmem.mem: $(BUILD)/firmware.elf
 | **G10** | L4 | byte-per-token (not Intel HEX `:10…`) — the two formats must never be confused (**Correction B**) |
 | **G11** | L4 | word spot-check: `objdump -d` bytes == head of `imem.mem` (spec §16 first-instruction check) |
 | **G12** | L4 | `sw/build/manifest.txt` generated (spec §17), including `Init mode: Mode 1` and `addr_xor: iccm=0 dccm=0` |
-| **G13** | — | `firmware.ihex` exists but is **never** copied to the sim dir (spec §6.1) |
+| **G13** | — | `firmware.ihex` exists but is **never** copied to the sim dir (spec §6.1) | ✅ **2026-09-26** — gated inside `make sim`; `no *.ihex in build/sim/fw0` |
 
-**Step 2 is complete when G1–G13 all pass.**
+**Step 2 is complete when G1–G13 all pass.** — **DONE 2026-09-26.**
 
 ---
 
@@ -420,14 +470,30 @@ and **L6** (CPU boot).
 | --- | --- |
 | `S5` | root/sim `veer-config` → `build/snapshots/p2_soc` (`-target=default_ahb -snapshot=p2_soc -set=reset_vec=0x00000000`) — **project-local**, per `D6`/N4 |
 | `S6` | `sim/filelist.f` references `build/snapshots/p2_soc/…`, **not** `/tmp/opencode/...` |
-| `S7` | `tb/tb_memory_init.sv` — parses `+IMEM_HEX` (**mandatory**) / `+DMEM_HEX` (**optional**), `$fopen` probe, ECC-clean zero-fill, hierarchical `$readmemh`, §15 init log, §14 failure conditions, shaped so the `slam_*` loader can be added later |
-| `S7b` | **same change-set as S7**: remove the `initial` block from `rtl/ahb/ahb_sram.sv` and retire `HEX_FILE`/`IMEM_HEX`/`DMEM_HEX`. Two t=0 `initial` blocks have nondeterministic relative order — if the TB load ran first and the RTL zero-fill second, the image would be silently wiped (spec §9.2) |
-| `S8` | replace hardcoded `IMEM_HEX("p2_prog.hex")` with the plusarg service; **preserve the proven reset/halt/run sequence** verbatim (`tb/tb_veer_p2_soc.sv:269-294`) |
-| `S9` | `sim/Makefile` (sets `VCS_HOME`/`VERDI_HOME` into `PATH`) + root delegator |
-| `S11` | fw0 — boot + PASS magic |
+| `S7` | ⏳ **NOT DONE — deferred** (`tb/tb_memory_init.sv` with `+IMEM_HEX`/`+DMEM_HEX`) | see **D9-deferred** below |
+| `S7b` | ⏳ **NOT DONE — deferred** (remove `initial` from `rtl/ahb/ahb_sram.sv`) | see **D9-deferred** below |
+| `S8` | ⏳ **NOT DONE — deferred** (plusarg service for `IMEM_HEX`) | see **D9-deferred** below |
+| `S9` | ✅ `sim/Makefile` (exports `VCS_HOME`/`VERDI_HOME`, not just `PATH`) + root delegating `Makefile` + `sim/filelist.f` using `$RV_ROOT`/`$FW_SNAP`/`$FW_PROJ` | |
+| `S11` | ✅ fw0 — boot + PASS magic, both tokens gated | |
 
-Run: `make sim` → must reproduce the §24 transcript shape, ending in
-`P2_TB2_RESULT: PASS`.
+**Run:** `make sim` → transcript recorded in
+`doc/Firmware_Build_and_AHB_RW_Verification_Record.md` §5.2, ending in
+`P2_TB2_RESULT: PASS` **and** `AHB_RW_MONITOR: PASS`.
+
+### D9-deferred — the image-name stand-in (known deviation)
+
+A runtime plusarg cannot feed an elaboration-time parameter (decision `D9`).
+The only correct route to a dynamic image name is the PLUSARG-owned loader
+(`S7`/`S7b`/`S8`), and `S7b` removes `rtl/ahb/ahb_sram.sv`'s t=0 `initial`
+block. That file is Phase-2-shared and was in active use by the parallel
+session's committed Phase-3 flow, so removing it would have broken that flow
+(§7 rule 2). Until `S7`/`S7b`/`S8` land together (spec §9.2), `sim/Makefile`
+performs `cp sw/build/imem.mem $(WORK)/p2_prog.hex`.
+
+The image **bytes** are identical (`md5 0af02db4205da3cc6e1b4d2d139c1fc7`,
+2040 B, contiguous `@00000000`/`@0000025C`/`@0000029C`) — only the **filename**
+is a stand-in. Recorded as a prominent comment above the rule and as finding
+**D9-deferred** in the record §3.4.
 
 ## 5.2 The read/write-cycle monitor (new, additive)
 
@@ -475,27 +541,55 @@ grep -q "P2_TB2_RESULT: PASS"        sim.log   # spec §22 fw0 — unchanged mon
 grep -q "AHB_RW_MONITOR: PASS"       sim.log   # this plan — read/write proof
 ```
 
+### 5.2.1 Observed output (2026-09-26, deterministic over two runs)
+
+```console
+[90915000] P2_TB2_RESULT: PASS (P2 program ran through project fabric)
+[TB] AHB_CYCLES imem_rd=2393 imem_wr=0 dmem_rd=366 dmem_wr=164
+[TB] AHB_CYCLES uart_rd=0 uart_wr=0 def=0 bus_err=0 ifu_offtarget=0
+[TB] AHB_RW_MONITOR: PASS (mailbox reached; thresholds imem_rd>=8 dmem_rd>=16 dmem_wr>=16 bus_err==0 def==0)
+[SIM] PASS  P2_TB2_RESULT: PASS   (spec §22 fw0 — pre-existing monitor, unmodified)
+[SIM] PASS  AHB_RW_MONITOR: PASS   (plan §5.2 — read/write proof)
+[SIM] PASS  no *.ihex in /home/student/Documents/honours_project/build/sim/fw0
+```
+
+`[90915000]` is ps (finding **N9**) → **90 915 ns**; `$finish` at 91 015 ns.
+
+**Finding N10 — a 4-state flag silently disabled this monitor.** `reported`
+and `stop_d` were declared bare `reg`, which is 4-state and defaults to `X`.
+`if (!X)` is **never true** in SystemVerilog, so the whole counting block and
+the watchdog were skipped while the module still compiled and elaborated
+cleanly. Fixed with `reg reported = 1'b0; reg stop_d = 1'b0;`. Rule: any
+`reg` used in a condition must be explicitly initialised.
+
 ## 5.3 Verdi read/write-cycle checklist — this IS the step-3 evidence
 
 Maps to spec §16 L6 and produces the waveform half of the "log + waveform"
 evidence rule.
 
-| # | Proved | Signals (groups in `run/fw_wave.rc`) |
-| --- | --- | --- |
-| 1 | **Instruction read cycles (IFU)** | `ic_htrans=2'b10`, `ic_haddr` walking from `0x0`, `ic_hrdata` = fetched insn; cross-check `trace_rv_i_insn_ip` / `trace_rv_i_valid_ip`. Spec §16 L6: first fetch address must equal `0x00000000` |
-| 2 | **DMEM write cycle (LSU)** | `lsu_htrans=2'b10`, `lsu_hwrite=1`, `lsu_haddr=0x0001_00xx`, `lsu_hwdata`=value; following cycle `dmem_hsel=1`, `lsu_hready=1`; confirm `u_soc.u_dmem.mem[…]` changed |
-| 3 | **DMEM read cycle (LSU)** | `lsu_hwrite=0`, `lsu_haddr=…` → `lsu_hrdata` returns the stored value, `lsu_hready=1`, `lsu_hresp=0` |
-| 4 | **IMEM read of `.data` LMA during the copy** | LSU accepted with `lsu_hwrite=0` and `lsu_haddr` in the IMEM region, occurring after the DMEM `.bss` setup — this is `startup.S` reading `.data` from LMA |
-| 5 | **Address decode / slave select** | `imem_hsel`/`dmem_hsel`/`uart_hsel`/`def_hsel` one-hot (`/tb_veer_fw/u_soc/u_fabric`) |
-| 6 | **Arbitration** | LSU wins over IFU when both assert `HTRANS` (arch §11.8) |
-| 7 | **No bus errors** | `lsu_hresp`, `ic_hresp` never assert; `def_hsel` never claimed for a mapped region |
-| 8 | **AHB pipelining** | address phase in cycle *t*, data phase (HWDATA) in *t+1* — the classic off-by-one that caused two Phase-2 bugs (`doc/Phase2_...md` §4.1, §4.3) |
+| # | Proved | Signals (groups in `run/fw_wave.rc`) | Result 2026-09-26 |
+| --- | --- | --- | --- |
+| 1 | **Instruction read cycles (IFU)** | `ic_htrans=2'b10`, `ic_haddr` walking from `0x0`, `ic_hrdata` = fetched insn; cross-check `trace_rv_i_insn_ip` / `trace_rv_i_valid_ip`. Spec §16 L6: first fetch address must equal `0x00000000` | ✅ first accepted fetch **`ic_htrans=10, ic_haddr=0x00000000` @355 ns**; `trace_rv_i_address_ip` walks `0x0 → 0x4 → 0x8 → 0xC → 0x10 → 0x14 → 0x18`; first retire `trace_rv_i_insn_ip @425 ns = 0x00018117` (**== G11**); `ic_hwrite=0` always; `ifu_offtarget=0`, `imem_rd=2393` |
+| 2 | **DMEM write cycle (LSU)** | `lsu_htrans=2'b10`, `lsu_hwrite=1`, `lsu_haddr=0x0001_00xx`, `lsu_hwdata`=value; following cycle `dmem_hsel=1`, `lsu_hready=1`; confirm `u_soc.u_dmem.mem[…]` changed | ✅ **@1365 ns** `lsu_htrans=10, hwrite=1, haddr=0x00010010, hready=1, dmem_hsel=1` (one-hot), `lsu_hresp=0`; data phase @1375 ns `data_sel=010, data_is_lsu=1`, **`lsu_hwdata = 0x00C0FFEE` = `EE FF C0 00`** — byte-identical to `data_marker` (record §5.1). Second sample @11405 ns `haddr=0x00017FEC`. `dmem_wr=164` |
+| 3 | **DMEM read cycle (LSU)** | `lsu_hwrite=0`, `lsu_haddr=…` → `lsu_hrdata` returns the stored value, `lsu_hready=1`, `lsu_hresp=0` | ✅ **@11035 ns** `lsu_htrans=10, hwrite=0, haddr=0x00010000, hready=1, dmem_hsel=1` (one-hot), `lsu_hresp=0`; data phase @11045 ns `lsu_hrdata` valid with `data_is_lsu=1`. Also @10925/@11215 ns `haddr=0x00017FE8`. `dmem_rd=366` |
+| 4 | **IMEM read of `.data` LMA during the copy** | LSU accepted with `lsu_hwrite=0` and `lsu_haddr` in the IMEM region, occurring after the DMEM `.bss` setup — this is `startup.S` reading `.data` from LMA | ✅ **`lsu_haddr=0x00000298, hwrite=0, htrans=10` @1255 ns** → data phase @1265 ns **`lsu_hrdata = 0x00C0FFEE_00000000`**, i.e. `HRDATA[63:32] = 0x00C0FFEE` = `imem.mem @0000029C` = `.data` LMA (`objdump -h`: `.data … LMA 0000029c`). Next store @1365 ns writes that same `0x00C0FFEE` to `haddr=0x00010010` (`.data` **VMA**). Beat is 64-bit so the address is presented 8-byte-aligned and `.data` lands in the **upper** half (commit `16c10a4` documents this align-down). Second IMEM load `haddr=0x00000258` @9955 ns = `ro_probe[]` in `.rodata` |
+| 5 | **Address decode / slave select** | `imem_hsel`/`dmem_hsel`/`uart_hsel`/`def_hsel` one-hot (`/tb_veer_soc/u_soc/u_fabric`) | ✅ **one-hot at every sampled edge**; IFU fetch → `imem=1`, LSU DMEM → `dmem=1`, LSU IMEM → `imem=1`; `addr_sel`=`001`=IFU / `010`=LSU / `000`=idle; `data_sel` trails by exactly one cycle; **`def_hsel` never asserted** (`def=0`); `uart_rd=uart_wr=0` |
+| 6 | **Arbitration** | LSU wins over IFU when both assert `HTRANS` (arch §11.8) | ✅ **153 clock edges** with both masters at `2'b10` (first @1255 ns). @9955 ns both request → **`lsu_hready=1` (granted), `ic_hready=0` (address phase HELD)**, `addr_is_lsu=1`; @9965 ns `ic_hready=1` and the IFU retry `0x00000128` is accepted. **This is the `ahb_interconnect.sv` fix observed working** |
+| 7 | **No bus errors** | `lsu_hresp`, `ic_hresp` never assert; `def_hsel` never claimed for a mapped region | ✅ `ic_hresp=lsu_hresp=0` at every sampled edge; `bus_err=0`, `def=0`, `ifu_offtarget=0`; **`trace_rv_i_exception_ip = 0` for the entire run** (vs 24 719 illegal-instruction traps pre-fix) |
+| 8 | **AHB pipelining** | address phase in cycle *t*, data phase (HWDATA) in *t+1* — the classic off-by-one that caused two Phase-2 bugs (`doc/Phase2_...md` §4.1, §4.3) | ✅ every read/write sampled shows `t` = `htrans=10` + `hsel=1` + `data_sel=old`, `t+1` = `htrans=00` + `hsel=0` + `data_sel=010` + `data_is_lsu=1`; IFU address phase accepted @1425/1435 ns while the LSU data phase is still in flight |
+
+**Mailbox trigger cross-check (record §6.9):** `@90885 ns lsu_htrans=10,
+hwrite=1, haddr=0x00010002` → data phase `@90895 ns lsu_hwdata = 0x00FF0000`,
+i.e. **byte lane 2 = `0xFF`** → `P2_TB2_RESULT: PASS` one clock later at
+**90 915 ns**. Software contract, waveform and testbench monitor agree.
 
 Wave deliverables: FSDB + `run/fw_wave.rc` with groups
 *1 Clock & Reset · 2 CPU fetch/execute · 3 IFU AHB (reads) · 4 LSU AHB
-(reads+writes) · 5 Fabric select · 6 IMEM `.data` copy · 7 AHB cycle counts*;
-cursor A on the first DMEM write, cursor B on the first DMEM read-back; two
-screenshots into `doc/screenshots/`.
+(reads+writes) · 5 Fabric select · 6 Arbitration · 7 AHB cycle monitor* —
+**delivered**. Evidence format: the §6 cycle tables of
+`doc/Firmware_Build_and_AHB_RW_Verification_Record.md` are `fsdbreport`
+extracts from that same FSDB (waveform-equivalence); **screenshots are
+partial** — 1 of 5 retained, see record §8.5.
 
 ---
 
@@ -665,30 +759,47 @@ first precisely because the tree is currently being edited in parallel.
 
 # 12. Definition of done
 
-**Progress so far:**
+**Progress as of 2026-09-26:**
 
-- [x] Item 1, gates **G1–G12** — PASS (G13 needs the sim run, item 3)
+- [x] Item 1, gates **G1–G13** — **all PASS** (G1–G12 in `Fw0_C_Toolchain_Build_and_Gate_Record.md` §4; G13 gated inside `make sim`)
 - [x] Item 2 — PASS
-- [ ] Item 3 — `make sim` (Step 3a)
-- [ ] Item 4 — Verdi waveform evidence (Step 3a)
-- [ ] Item 5 — final record + spec rev 1.6
+- [x] Item 3 — `make sim` (Step 3a) — **both tokens PASS, deterministic over two runs**
+- [~] Item 4 — Verdi waveform evidence (Step 3a) — **checklist §5.3 fully filled from the FSDB** (record §6); **screenshots partial** (1 of 5 retained, record §8.5); N8 helper not yet embedded in `make verdi`
+- [ ] Item 5 — record ✅ (`Firmware_Build_and_AHB_RW_Verification_Record.md`) · **spec rev 1.6 not yet cut** (amendments listed below)
 
 Evidence for items 1–2: `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md`.
+Evidence for item 3–4: `doc/Firmware_Build_and_AHB_RW_Verification_Record.md`.
 
 **This plan is done when:**
 
 1. `make -C sw all inspect` passes gates **G1–G13** — the hex is generated
-   and validated (**step 2**).
+   and validated (**step 2**). — ✅ **DONE**
 2. A C program authored in `sw/src/main.c` compiles, links under
-   `-nostdlib`, and is converted to `imem.mem`/`dmem.mem` (**step 1**).
+   `-nostdlib`, and is converted to `imem.mem`/`dmem.mem` (**step 1**). — ✅ **DONE**
 3. `make sim` prints both `P2_TB2_RESULT: PASS` (spec fw0) **and**
    `AHB_RW_MONITOR: PASS` with non-zero `dmem_wr`/`dmem_rd`/`imem_rd` counts
-   (**step 3**).
+   (**step 3**). — ✅ **DONE** (`imem_rd=2393 dmem_rd=366 dmem_wr=164
+   imem_wr=0 bus_err=0 def=0`)
 4. Verdi is opened on the resulting FSDB with `run/fw_wave.rc`, and
    `doc/screenshots/` contains the first-DMEM-write and first-DMEM-read-back
    captures, with the §5.3 checklist table filled in
-   (**step 3, waveform half**).
+   (**step 3, waveform half**). — ✅ checklist **fully filled** (record §6,
+   cycle-accurate `fsdbreport` extracts from the FSDB) · ⚠️ **screenshots
+   partial** — outstanding: DMEM read, IMEM-LMA read, decode/select,
+   arbitration, no-bus-error, mailbox (record §8.5)
 5. A `doc/*_Record.md` exists for steps 1–2 (`Fw0_C_Toolchain_Build_and_Gate_Record.md`,
    **done**) and for step 3, with logs + waveforms, and the four amendments
-   A1–A4 — plus the new **N6** and **N7** — are folded back into the spec as
-   rev 1.6.
+   A1–A4 — plus the new **N6**–**N10** — are folded back into the spec as
+   rev 1.6. — ✅ both records exist · ⚠️ **spec rev 1.6 pending**
+
+**Still open after Step 3a (non-blocking):**
+
+| Item | Ref |
+| --- | --- |
+| Four extra §5.3 screenshots (DMEM read, IMEM-LMA, decode/arbitration, mailbox) | record §8.5 |
+| Embed the N8 license-dialog dismissal in `sim/Makefile`'s `verdi` target | plan N8 |
+| **`S7`/`S7b`/`S8`** — PLUSARG-owned image loader, remove `ahb_sram`'s `initial` | plan §5.1 **D9-deferred** |
+| Spec rev 1.6 amendment sweep: **A1–A4, N6, N7, N8, N9, N10** | record §9 |
+| `.gitignore` `S10` re-check now that `sim/`, root `Makefile`, `run/fw_wave.rc` are versioned | plan §8.1 |
+| `README.md` status/index rows (file carries an in-flight edit from a parallel session) | plan §8.2 |
+| **Step 3b** — fw2 UART / fw5 AES read/write against a real peripheral | plan §6 |

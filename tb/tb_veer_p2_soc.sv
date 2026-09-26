@@ -317,6 +317,34 @@ module tb_veer_p2_soc
         end
     end
 
+    // ================= additive AHB read/write cycle monitor (plan §5.2) ====
+    // Separate module on purpose: spec §22 fw0 wants the PASS monitor above to
+    // fire with ZERO changes, while spec §14/§16 L6 wants an independent token
+    // proving read AND write cycles really occurred. Instantiated after `done`
+    // is declared; the reset/halt/run sequence above is untouched.
+    tb_ahb_cycle_monitor #(
+        .N_IMEM_RD(8),
+        .N_DMEM_RD(16),
+        .N_DMEM_WR(16),
+        .WATCHDOG_NS(1_900_000)   // ahead of the #2000000 timeout below
+    ) u_ahb_mon (
+        .clk       (core_clk),
+        .rst_n     (rst_l_combined),
+        .stop      (done),
+
+        .ic_haddr  (ic_haddr),
+        .ic_htrans (ic_htrans),
+        .ic_hwrite (ic_hwrite),
+        .ic_hready (ic_hready),
+        .ic_hresp  (ic_hresp),
+
+        .lsu_haddr (lsu_haddr),
+        .lsu_htrans(lsu_htrans),
+        .lsu_hwrite(lsu_hwrite),
+        .lsu_hready(lsu_hready),
+        .lsu_hresp (lsu_hresp)
+    );
+
     initial begin
         #2000000;
         $display("[%0t] P2_TB2_RESULT: TIMEOUT FAIL", $time);
