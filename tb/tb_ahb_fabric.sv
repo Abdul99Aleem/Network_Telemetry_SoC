@@ -94,12 +94,14 @@ module tb_ahb_fabric;
     endtask
 
     // One-hot HSEL monitor (sampled every cycle while any master is active).
+    reg uart_sel_seen = 1'b0;
     always @(posedge clk) begin
+        if (dut.uart_hsel) uart_sel_seen <= 1'b1;
         if (reset_n && ((lsu_htrans != HTRANS_IDLE) || (ifu_htrans != HTRANS_IDLE))) begin
-            if ((dut.imem_hsel + dut.dmem_hsel + dut.def_hsel) > 1) begin
+            if ((dut.imem_hsel + dut.dmem_hsel + dut.uart_hsel + dut.def_hsel) > 1) begin
                 fail_cnt = fail_cnt + 1;
-                $display("[%0t ns] FAIL hsel_onehot imem=%b dmem=%b def=%b",
-                         $time, dut.imem_hsel, dut.dmem_hsel, dut.def_hsel);
+                $display("[%0t ns] FAIL hsel_onehot imem=%b dmem=%b uart=%b def=%b",
+                         $time, dut.imem_hsel, dut.dmem_hsel, dut.uart_hsel, dut.def_hsel);
             end
         end
     end
@@ -164,7 +166,7 @@ module tb_ahb_fabric;
         repeat (2) @(posedge clk); #1;
         check("T1 reset: masters ready, no resp, no select",
               lsu_hready && ifu_hready && !lsu_hresp && !ifu_hresp &&
-              !dut.imem_hsel && !dut.dmem_hsel && !dut.def_hsel);
+              !dut.imem_hsel && !dut.dmem_hsel && !dut.uart_hsel && !dut.def_hsel);
 
         // ---- T2: LSU word write + read, DMEM ----
         lsu_write(32'h0001_0000, 64'h0000_0000_DEADBEEF, 3'b010);
@@ -183,14 +185,14 @@ module tb_ahb_fabric;
         lsu_haddr <= 32'h0000_7FF8; lsu_htrans <= HTRANS_NONSEQ; lsu_hwrite <= 1'b0; lsu_hsize <= 3'b011;
         @(posedge clk); #1;
         check("T4 IMEM selected at top of window",
-              dut.imem_hsel && !dut.dmem_hsel && !dut.def_hsel);
+              dut.imem_hsel && !dut.dmem_hsel && !dut.uart_hsel && !dut.def_hsel);
         lsu_htrans <= HTRANS_IDLE;
         @(posedge clk); #1;
         @(posedge clk); #1;
         lsu_haddr <= 32'h0001_7FF0; lsu_htrans <= HTRANS_NONSEQ;
         @(posedge clk); #1;
         check("T4 DMEM selected at top of window",
-              dut.dmem_hsel && !dut.imem_hsel && !dut.def_hsel);
+              dut.dmem_hsel && !dut.imem_hsel && !dut.uart_hsel && !dut.def_hsel);
         lsu_htrans <= HTRANS_IDLE;
         @(posedge clk); #1;
 
@@ -283,6 +285,20 @@ module tb_ahb_fabric;
         lsu_write(32'h0001_0402, 64'hCCDD0000, 3'b001); // half lanes 2-3 <- HWDATA[31:16]
         lsu_read(32'h0001_0400, 3'b011, rd, rp);
         check("T10 byte/half lanes", (rd[31:0] == 32'hCCDD_BB00) && !rp);
+
+        // ---- T11: UART region decode + AHB->AXI bridge READ path ----
+        // LSR @ 0x1000_0014. addr[2]=1 so the word sits in the UPPER 32-bit
+        // lane of the 64-bit bus (same convention ahb_sram uses).
+        lsu_read(32'h1000_0014, 3'b010, rd, rp);
+        check("T11 UART decode + LSR read via AHB->AXI bridge",
+              uart_sel_seen && (rd[38:37] === 2'b11) && (rp === 1'b0));
+        $display("[%0t ns] T11 LSR = 0x%h (expect 00000060_00000000)", $time, rd);
+
+        // ---- T12: UART WRITE path (THR) through the same bridge ----
+        lsu_write(32'h1000_0000, 64'h0000_0000_0000_0048, 3'b010);
+        lsu_read(32'h1000_0014, 3'b010, rd, rp);
+        check("T12 UART THR write then LSR read, HRESP=0", (rp === 1'b0));
+        check("T12 LSR after THR write still THRE+TEMT", (rd[38:37] === 2'b11));
 
         // ---- summary ----
         $display("==================================================");

@@ -13,6 +13,8 @@ $RV_ROOT/design/include/el2_def.sv
 /home/student/Documents/honours_project/rtl/ahb/ahb_default_slave.sv
 /home/student/Documents/honours_project/rtl/soc_top.sv
 
+-f /home/student/Documents/honours_project/run/uart_rtl.f
+
 /home/student/Documents/honours_project/tb/tb_veer_p2_soc.sv
 
 -top tb_veer_p2_soc

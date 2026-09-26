@@ -1,14 +1,14 @@
 // ============================================================================
 // Project: RISC-V Network Telemetry SoC — Phase 2
 // Module : ahb_interconnect
-// Desc   : 2-master (IFU, LSU) x 3-slave (IMEM, DMEM, DEFAULT-ERROR)
+// Desc   : 2-master (IFU, LSU) x 4-slave (IMEM, DMEM, UART, DEFAULT-ERROR)
 //          AHB-Lite fabric. LSU has fixed priority over IFU (v3 arch §11.8).
 //          64-bit data to match the VeeR AHB interface (v3 §2.3).
 //
-// Address map (v3 §9, Phase-2 scope = memories; all other regions decode
-// to the DEFAULT error slave and are added as slaves in later phases):
+// Address map (v3 §9, v3 §10.1):
 //   IMEM  0x0000_0000 - 0x0000_7FFF  (32 KB)
 //   DMEM  0x0001_0000 - 0x0001_7FFF  (32 KB)
+//   UART  0x1000_0000 - 0x1000_0FFF  (4 KB, via ahb_to_axi_bridge)
 //
 // Protocol notes:
 // - Address-phase arbitration (combinational on HTRANS), data-phase
@@ -79,6 +79,20 @@ module ahb_interconnect #(
     input  wire                     dmem_hreadyout,
     input  wire                     dmem_hresp,
 
+    // ---- UART slave (bridged to AXI4) ----
+    output wire                     uart_hsel,
+    output wire [ADDR_WIDTH-1:0]    uart_haddr,
+    output wire [2:0]               uart_hburst,
+    output wire                     uart_hmastlock,
+    output wire [3:0]               uart_hprot,
+    output wire [2:0]               uart_hsize,
+    output wire [1:0]               uart_htrans,
+    output wire                     uart_hwrite,
+    output wire [DATA_WIDTH-1:0]    uart_hwdata,
+    input  wire [DATA_WIDTH-1:0]    uart_hrdata,
+    input  wire                     uart_hreadyout,
+    input  wire                     uart_hresp,
+
     // ---- DEFAULT (error) slave ----
     output wire                     def_hsel,
     output wire [ADDR_WIDTH-1:0]    def_haddr,
@@ -117,17 +131,21 @@ module ahb_interconnect #(
     wire                  mux_active    = (mux_htrans != HTRANS_IDLE);
 
     // ----------------------------------------------------------------
-    // Address decode (Phase-2: IMEM + DMEM; everything else -> default).
+    // Address decode (v3 §9). Exactly one HSEL is asserted per active
+    // transfer; everything not claimed by a real slave hits DEFAULT.
     // ----------------------------------------------------------------
     wire imem_match = (mux_haddr[31:15] == 17'h0000); // 0x0000_0000/32K
     wire dmem_match = (mux_haddr[31:15] == 17'h0002); // 0x0001_0000/32K
+    wire uart_match = (mux_haddr[31:12] == 20'h10000); // 0x1000_0000/4K
 
     wire sel_imem = mux_active && imem_match;
     wire sel_dmem = mux_active && !imem_match && dmem_match;
-    wire sel_def  = mux_active && !imem_match && !dmem_match;
+    wire sel_uart = mux_active && !imem_match && !dmem_match && uart_match;
+    wire sel_def  = mux_active && !imem_match && !dmem_match && !uart_match;
 
     assign imem_hsel = sel_imem;
     assign dmem_hsel = sel_dmem;
+    assign uart_hsel = sel_uart;
     assign def_hsel  = sel_def;
 
     assign imem_haddr = mux_haddr; assign imem_hburst = mux_hburst;
@@ -140,6 +158,11 @@ module ahb_interconnect #(
     assign dmem_hsize = mux_hsize; assign dmem_htrans = mux_htrans;
     assign dmem_hwrite = mux_hwrite; assign dmem_hwdata = mux_hwdata;
 
+    assign uart_haddr = mux_haddr; assign uart_hburst = mux_hburst;
+    assign uart_hmastlock = mux_hmastlock; assign uart_hprot = mux_hprot;
+    assign uart_hsize = mux_hsize; assign uart_htrans = mux_htrans;
+    assign uart_hwrite = mux_hwrite; assign uart_hwdata = mux_hwdata;
+
     assign def_haddr = mux_haddr; assign def_hburst = mux_hburst;
     assign def_hmastlock = mux_hmastlock; assign def_hprot = mux_hprot;
     assign def_hsize = mux_hsize; assign def_htrans = mux_htrans;
@@ -148,28 +171,35 @@ module ahb_interconnect #(
     // ----------------------------------------------------------------
     // Data-phase ownership: registered address-phase owner + slave.
     // Sampled when the data phase completes (slave HREADYOUT = 1).
-    // Encoding: 2'b00 none/idle, 2'b01 IMEM, 2'b10 DMEM, 2'b11 DEFAULT.
+    // Encoding: 3'b000 none/idle, 3'b001 IMEM, 3'b010 DMEM,
+    //           3'b011 UART,    3'b100 DEFAULT.
     // ----------------------------------------------------------------
     reg        data_is_lsu;
-    reg [1:0]  data_sel;
+    reg [2:0]  data_sel;
 
-    wire [1:0] addr_sel = sel_imem ? 2'b01 : (sel_dmem ? 2'b10 : (sel_def ? 2'b11 : 2'b00));
+    wire [2:0] addr_sel = sel_imem ? 3'b001 :
+                          sel_dmem ? 3'b010 :
+                          sel_uart ? 3'b011 :
+                          sel_def  ? 3'b100 : 3'b000;
 
     wire [DATA_WIDTH-1:0] mux_hrdata;
     wire                  mux_hreadyout;
     wire                  mux_hresp;
 
-    assign mux_hrdata    = (data_sel == 2'b01) ? imem_hrdata :
-                           (data_sel == 2'b10) ? dmem_hrdata : def_hrdata;
-    assign mux_hreadyout = (data_sel == 2'b01) ? imem_hreadyout :
-                           (data_sel == 2'b10) ? dmem_hreadyout : def_hreadyout;
-    assign mux_hresp     = (data_sel == 2'b01) ? imem_hresp :
-                           (data_sel == 2'b10) ? dmem_hresp : def_hresp;
+    assign mux_hrdata    = (data_sel == 3'b001) ? imem_hrdata :
+                           (data_sel == 3'b010) ? dmem_hrdata :
+                           (data_sel == 3'b011) ? uart_hrdata : def_hrdata;
+    assign mux_hreadyout = (data_sel == 3'b001) ? imem_hreadyout :
+                           (data_sel == 3'b010) ? dmem_hreadyout :
+                           (data_sel == 3'b011) ? uart_hreadyout : def_hreadyout;
+    assign mux_hresp     = (data_sel == 3'b001) ? imem_hresp :
+                           (data_sel == 3'b010) ? dmem_hresp :
+                           (data_sel == 3'b011) ? uart_hresp : def_hresp;
 
     always @(posedge hclk or negedge hreset_n) begin
         if (!hreset_n) begin
             data_is_lsu <= 1'b0;
-            data_sel    <= 2'b00;
+            data_sel    <= 3'b000;
         end else if (mux_hreadyout) begin
             // Previous data phase completed: adopt current address phase.
             data_is_lsu <= addr_is_lsu;

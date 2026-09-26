@@ -1,10 +1,13 @@
 // ============================================================================
-// Project: RISC-V Network Telemetry SoC — Phase 2
+// Project: RISC-V Network Telemetry SoC
 // Module : soc_top
-// Desc   : Phase-2 SoC top: AHB-Lite fabric + IMEM + DMEM + default slave.
-//          VeeR IFU/LSU masters attach directly. Peripheral regions
-//          (UART/Timer/GPIO/NET/AES/CRC) decode to the default ERROR slave
-//          until their slaves land in later phases (v3 §9 map reserved).
+// Desc   : SoC top: AHB-Lite fabric + IMEM + DMEM + UART + default slave.
+//          VeeR IFU/LSU masters attach directly. The UART sits at
+//          0x1000_0000/4KB (v3 §9, §10.1) behind ahb_to_axi_bridge,
+//          which converts the 64-bit AHB-Lite peripheral port into the
+//          32-bit full-AXI4 port that uart_axi_slave expects.
+//          Remaining peripheral regions (Timer/GPIO/NET/AES/CRC) decode to
+//          the default ERROR slave (v3 §9 map reserved).
 //
 //          IMEM_HEX preloads IMEM via $readmemh ("" = zero-filled).
 //          DMEM is zero-filled (CPU/stack Init in software).
@@ -42,7 +45,11 @@ module soc_top #(
     input  wire [63:0] lsu_hwdata,
     output wire [63:0] lsu_hrdata,
     output wire        lsu_hready,
-    output wire        lsu_hresp
+    output wire        lsu_hresp,
+
+    // ---- UART pins (TX-only per v3 §10.1) ----
+    output wire        uart_tx_o,
+    output wire        uart_irq_o
 );
 
     // ---- fabric -> slave wires ----
@@ -60,6 +67,11 @@ module soc_top #(
     wire [31:0] def_haddr; wire [2:0] def_hburst, def_hsize;
     wire def_hmastlock; wire [3:0] def_hprot; wire [1:0] def_htrans;
     wire [63:0] def_hwdata, def_hrdata;
+
+    wire uart_hsel, uart_hwrite, uart_hreadyout, uart_hresp;
+    wire [31:0] uart_haddr; wire [2:0] uart_hburst, uart_hsize;
+    wire uart_hmastlock; wire [3:0] uart_hprot; wire [1:0] uart_htrans;
+    wire [63:0] uart_hwdata, uart_hrdata;
 
     ahb_interconnect u_fabric (
         .hclk(clk), .hreset_n(reset_n),
@@ -93,7 +105,14 @@ module soc_top #(
         .def_htrans(def_htrans), .def_hwrite(def_hwrite),
         .def_hwdata(def_hwdata),
         .def_hrdata(def_hrdata),
-        .def_hreadyout(def_hreadyout), .def_hresp(def_hresp)
+        .def_hreadyout(def_hreadyout), .def_hresp(def_hresp),
+        .uart_hsel(uart_hsel), .uart_haddr(uart_haddr),
+        .uart_hburst(uart_hburst), .uart_hmastlock(uart_hmastlock),
+        .uart_hprot(uart_hprot), .uart_hsize(uart_hsize),
+        .uart_htrans(uart_htrans), .uart_hwrite(uart_hwrite),
+        .uart_hwdata(uart_hwdata),
+        .uart_hrdata(uart_hrdata),
+        .uart_hreadyout(uart_hreadyout), .uart_hresp(uart_hresp)
     );
 
     // IMEM: 0x0000_0000 - 0x0000_7FFF (32 KB)
@@ -116,6 +135,81 @@ module soc_top #(
         .hmastlock(dmem_hmastlock), .hprot(dmem_hprot), .hsize(dmem_hsize),
         .htrans(dmem_htrans), .hwrite(dmem_hwrite), .hwdata(dmem_hwdata),
         .hrdata(dmem_hrdata), .hreadyout(dmem_hreadyout), .hresp(dmem_hresp)
+    );
+
+    // ---- AHB-Lite -> AXI4 bridge + UART (0x1000_0000 / 4KB) ----
+    localparam UART_ID_WIDTH = 8;
+
+    wire [UART_ID_WIDTH-1:0] awid, bid, arid, rid;
+    wire [31:0] awaddr, wdata, araddr, rdata;
+    wire [7:0]  awlen, arlen;
+    wire [2:0]  awsize, arsize;
+    wire [1:0]  awburst, arburst, bresp, rresp;
+    wire        awlock, wlast, arlock, rlast;
+    wire [3:0]  awcache, wstrb, arcache;
+    wire [2:0]  awprot, arprot;
+    wire [3:0]  awqos, arqos;
+    wire        awuser, wuser, buser, aruser, ruser;
+    wire        awvalid, awready, wvalid, wready, bvalid, bready;
+    wire        arvalid, arready, rvalid, rready;
+
+    ahb_to_axi_bridge #(.ID_WIDTH(UART_ID_WIDTH)) u_ahb2axi (
+        .hclk(clk), .hreset_n(reset_n),
+        .hsel(uart_hsel), .haddr(uart_haddr), .hburst(uart_hburst),
+        .hmastlock(uart_hmastlock), .hprot(uart_hprot),
+        .hsize(uart_hsize), .htrans(uart_htrans), .hwrite(uart_hwrite),
+        .hwdata(uart_hwdata), .hrdata(uart_hrdata),
+        .hreadyout(uart_hreadyout), .hresp(uart_hresp),
+
+        .m_axi_awid(awid), .m_axi_awaddr(awaddr), .m_axi_awlen(awlen),
+        .m_axi_awsize(awsize), .m_axi_awburst(awburst),
+        .m_axi_awlock(awlock), .m_axi_awcache(awcache),
+        .m_axi_awprot(awprot), .m_axi_awqos(awqos), .m_axi_awuser(awuser),
+        .m_axi_awvalid(awvalid), .m_axi_awready(awready),
+
+        .m_axi_wdata(wdata), .m_axi_wstrb(wstrb), .m_axi_wlast(wlast),
+        .m_axi_wuser(wuser), .m_axi_wvalid(wvalid), .m_axi_wready(wready),
+
+        .m_axi_bid(bid), .m_axi_bresp(bresp), .m_axi_bvalid(bvalid),
+        .m_axi_bready(bready),
+
+        .m_axi_arid(arid), .m_axi_araddr(araddr), .m_axi_arlen(arlen),
+        .m_axi_arsize(arsize), .m_axi_arburst(arburst),
+        .m_axi_arlock(arlock), .m_axi_arcache(arcache),
+        .m_axi_arprot(arprot), .m_axi_arqos(arqos), .m_axi_aruser(aruser),
+        .m_axi_arvalid(arvalid), .m_axi_arready(arready),
+
+        .m_axi_rid(rid), .m_axi_rdata(rdata), .m_axi_rresp(rresp),
+        .m_axi_rlast(rlast), .m_axi_ruser(ruser),
+        .m_axi_rvalid(rvalid), .m_axi_rready(rready)
+    );
+
+    uart_axi_slave #(.ID_WIDTH(UART_ID_WIDTH)) u_uart (
+        .clk(clk), .rst(~reset_n),
+
+        .s_axi_awid(awid), .s_axi_awaddr(awaddr), .s_axi_awlen(awlen),
+        .s_axi_awsize(awsize), .s_axi_awburst(awburst),
+        .s_axi_awlock(awlock), .s_axi_awcache(awcache),
+        .s_axi_awprot(awprot), .s_axi_awqos(awqos), .s_axi_awuser(awuser),
+        .s_axi_awvalid(awvalid), .s_axi_awready(awready),
+
+        .s_axi_wdata(wdata), .s_axi_wstrb(wstrb), .s_axi_wlast(wlast),
+        .s_axi_wuser(wuser), .s_axi_wvalid(wvalid), .s_axi_wready(wready),
+
+        .s_axi_bid(bid), .s_axi_bresp(bresp), .s_axi_buser(buser),
+        .s_axi_bvalid(bvalid), .s_axi_bready(bready),
+
+        .s_axi_arid(arid), .s_axi_araddr(araddr), .s_axi_arlen(arlen),
+        .s_axi_arsize(arsize), .s_axi_arburst(arburst),
+        .s_axi_arlock(arlock), .s_axi_arcache(arcache),
+        .s_axi_arprot(arprot), .s_axi_arqos(arqos), .s_axi_aruser(aruser),
+        .s_axi_arvalid(arvalid), .s_axi_arready(arready),
+
+        .s_axi_rid(rid), .s_axi_rdata(rdata), .s_axi_rresp(rresp),
+        .s_axi_rlast(rlast), .s_axi_ruser(ruser),
+        .s_axi_rvalid(rvalid), .s_axi_rready(rready),
+
+        .uart_tx_o(uart_tx_o), .uart_rx_i(1'b1), .uart_irq(uart_irq_o)
     );
 
     ahb_default_slave u_default (
