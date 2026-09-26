@@ -33,6 +33,14 @@ localparam integer BAUD_DIV = 8;
 localparam integer CLK_PERIOD_NS = 10;
 localparam integer BIT_PERIOD_NS = (BAUD_DIV + 1) * CLK_PERIOD_NS; // ~90ns
 
+// Bus watchdog: any AXI channel that never handshakes fails the test
+// instead of spinning forever.
+localparam integer AXI_TIMEOUT_CYCLES = 500;
+// Start-bit wait: generous, but finite (matches the original 20000 cycles).
+localparam integer START_TIMEOUT_CYCLES = 20000;
+
+integer tmo;
+
 reg clk;
 reg rst;
 
@@ -169,21 +177,35 @@ task axi_write;
         s_axi_wlast   <= 1'b1;
         s_axi_wuser   <= 1'b0;
         s_axi_wvalid  <= 1'b1;
-        while (!(s_axi_awready && s_axi_wready))
+        tmo = 0;
+        while (!(s_axi_awready && s_axi_wready)) begin
             @(posedge clk);
+            tmo = tmo + 1;
+            if (tmo > AXI_TIMEOUT_CYCLES) begin
+                $display("ERROR: axi_write timeout AWREADY/WREADY addr=%08h", addr);
+                $fatal(1, "axi_write handshake timeout");
+            end
+        end
         @(posedge clk);
         s_axi_awvalid <= 1'b0;
         s_axi_wvalid  <= 1'b0;
         s_axi_bready  <= 1'b1;
-        while (!s_axi_bvalid)
+        tmo = 0;
+        while (!s_axi_bvalid) begin
             @(posedge clk);
+            tmo = tmo + 1;
+            if (tmo > AXI_TIMEOUT_CYCLES) begin
+                $display("ERROR: axi_write timeout waiting BVALID addr=%08h", addr);
+                $fatal(1, "axi_write response timeout");
+            end
+        end
         if (s_axi_bresp !== 2'b00) begin
             $display("ERROR: write BRESP=%b addr=%08h", s_axi_bresp, addr);
             $fatal;
         end
         @(posedge clk);
         s_axi_bready <= 1'b0;
-        $display("AXI WRITE  ADDR=%08h DATA=%08h", addr, data);
+        $display("[%0t] AXI WRITE  ADDR=%08h DATA=%08h", $time, addr, data);
     end
 endtask
 
@@ -203,13 +225,27 @@ task axi_read;
         s_axi_arqos   <= 4'b0000;
         s_axi_aruser  <= 1'b0;
         s_axi_arvalid <= 1'b1;
-        while (!s_axi_arready)
+        tmo = 0;
+        while (!s_axi_arready) begin
             @(posedge clk);
+            tmo = tmo + 1;
+            if (tmo > AXI_TIMEOUT_CYCLES) begin
+                $display("ERROR: axi_read timeout ARREADY addr=%08h", addr);
+                $fatal(1, "axi_read address timeout");
+            end
+        end
         @(posedge clk);
         s_axi_arvalid <= 1'b0;
         s_axi_rready  <= 1'b1;
-        while (!s_axi_rvalid)
+        tmo = 0;
+        while (!s_axi_rvalid) begin
             @(posedge clk);
+            tmo = tmo + 1;
+            if (tmo > AXI_TIMEOUT_CYCLES) begin
+                $display("ERROR: axi_read timeout RVALID addr=%08h", addr);
+                $fatal(1, "axi_read data timeout");
+            end
+        end
         data = s_axi_rdata;
         if (s_axi_rresp !== 2'b00) begin
             $display("ERROR: read RRESP=%b addr=%08h", s_axi_rresp, addr);
@@ -217,41 +253,46 @@ task axi_read;
         end
         @(posedge clk);
         s_axi_rready <= 1'b0;
-        $display("AXI READ   ADDR=%08h DATA=%08h", addr, data);
+        $display("[%0t] AXI READ   ADDR=%08h DATA=%08h", $time, addr, data);
     end
 endtask
 
 // ------------------------------------------------------------
 // UART RX monitor: waits for start bit, samples 8N1 at BIT_PERIOD.
+//
+// The transmitter drops tx in the same cycle the IP produces the write
+// response, which is one clock BEFORE the outer AXI BVALID reaches this TB.
+// So the monitor is normally armed after tx has already fallen: polling for
+// "tx low" (instead of a bare @(negedge)) tolerates that, and anchors the
+// sample phase at most one clock late -- 10 ns against a 90 ns bit, far
+// inside the +/-0.5 bit budget.
 // ------------------------------------------------------------
 task automatic uart_recv_byte(output [7:0] data);
     integer b;
+    integer guard;
     begin
-        // Wait for start bit (TX idle high -> low), timeout 20000 cycles.
-        fork
-            begin
-                @(negedge uart_tx_o);
-            end
-            begin
-                repeat (20000) @(posedge clk);
+        guard = 0;
+        while (uart_tx_o !== 1'b0) begin
+            @(posedge clk);
+            guard = guard + 1;
+            if (guard > START_TIMEOUT_CYCLES) begin
                 $display("ERROR: UART start-bit timeout");
-                $fatal;
+                $fatal(1, "UART start-bit timeout");
             end
-        join_any
-        disable fork;
+        end
         // Mid-bit sampling: 1.5 BITs to bit0 centre.
-        #(BIT_PERIOD_NS * 1.5 * 1000);
+        #(BIT_PERIOD_NS * 1.5);
         for (b = 0; b < 8; b = b + 1) begin
             data[b] = uart_tx_o;
-            #(BIT_PERIOD_NS * 1000);
+            #(BIT_PERIOD_NS);
         end
         // Stop bit should be high.
         if (uart_tx_o !== 1'b1) begin
             $display("ERROR: UART stop bit not high (got %b)", uart_tx_o);
-            $fatal;
+            $fatal(1, "UART stop bit not high");
         end
         // Wait one more BIT so next start is clean.
-        #(BIT_PERIOD_NS * 1000);
+        #(BIT_PERIOD_NS);
         $display("UART RX byte = %02h (%s)", data,
                  (data >= 32 && data < 127) ? "printable" : "non-print");
     end
@@ -259,6 +300,17 @@ endtask
 
 reg [31:0] lsr;
 reg [7:0]  rx0, rx1;
+
+// A deadlock must be reported as a FAIL, never as a silent hang.
+localparam integer WATCHDOG_NS = 1_000_000; // 1 ms of sim time
+initial begin
+    #WATCHDOG_NS;
+    $display("");
+    $display("===============================================");
+    $display(" UART AXI SLAVE DIRECT: FAIL (watchdog after %0d ns)", WATCHDOG_NS);
+    $display("===============================================");
+    $fatal(1, "watchdog timeout");
+end
 
 initial begin
     s_axi_awid=0; s_axi_awaddr=0; s_axi_awlen=0; s_axi_awsize=0;
@@ -310,20 +362,26 @@ initial begin
     $display("IRQ QUIET PASS");
 
     // [3] Transmit 0x55, expect exact loopback via TX monitor.
-    axi_write(ADDR_THR, 32'h0000_0055);
-    uart_recv_byte(rx0);
+    // The monitor runs concurrently with the write: the transmitter drops tx
+    // before the write response returns, so arming afterwards can miss it.
+    fork
+        axi_write(ADDR_THR, 32'h0000_0055);
+        uart_recv_byte(rx0);
+    join
     if (rx0 !== 8'h55) begin
         $display("ERROR: byte0 expected 55 got %02h", rx0);
-        $fatal;
+        $fatal(1, "byte0 mismatch");
     end
     $display("TX BYTE 0x55 PASS");
 
     // [4] Transmit 'A' (0x41).
-    axi_write(ADDR_THR, 32'h0000_0041);
-    uart_recv_byte(rx1);
+    fork
+        axi_write(ADDR_THR, 32'h0000_0041);
+        uart_recv_byte(rx1);
+    join
     if (rx1 !== 8'h41) begin
         $display("ERROR: byte1 expected 41 got %02h", rx1);
-        $fatal;
+        $fatal(1, "byte1 mismatch");
     end
     $display("TX BYTE 0x41 PASS");
 

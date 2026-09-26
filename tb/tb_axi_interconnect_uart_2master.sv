@@ -232,6 +232,7 @@ module tb_axi_interconnect_uart_2master;
 
     localparam integer BAUD_DIV = 8;
     localparam integer BIT_PERIOD_NS = (BAUD_DIV + 1) * 10;
+    localparam integer START_TIMEOUT_CYCLES = 30000;
 
     reg clk = 1'b0;
     reg rst = 1'b1;
@@ -776,28 +777,32 @@ module tb_axi_interconnect_uart_2master;
         end
     endtask
 
+    // The transmitter drops tx one clock before the outer AXI write response
+    // reaches this TB, so the monitor is normally armed after tx already fell.
+    // Polling for "tx low" tolerates that and anchors at most one clock late.
     task automatic uart_recv_byte(output [7:0] data);
         integer b;
+        integer guard;
         begin
-            fork
-                begin @(negedge uart_tx_o); end
-                begin
-                    repeat (30000) @(posedge clk);
+            guard = 0;
+            while (uart_tx_o !== 1'b0) begin
+                @(posedge clk);
+                guard = guard + 1;
+                if (guard > START_TIMEOUT_CYCLES) begin
                     $display("ERROR: UART start-bit timeout");
-                    $fatal;
+                    $fatal(1, "UART start-bit timeout");
                 end
-            join_any
-            disable fork;
-            #(BIT_PERIOD_NS * 1.5 * 1000);
+            end
+            #(BIT_PERIOD_NS * 1.5);
             for (b = 0; b < 8; b = b + 1) begin
                 data[b] = uart_tx_o;
-                #(BIT_PERIOD_NS * 1000);
+                #(BIT_PERIOD_NS);
             end
             if (uart_tx_o !== 1'b1) begin
                 $display("ERROR: UART stop bit not high");
-                $fatal;
+                $fatal(1, "UART stop bit not high");
             end
-            #(BIT_PERIOD_NS * 1000);
+            #(BIT_PERIOD_NS);
             $display("UART RX byte = %02h", data);
         end
     endtask
@@ -834,39 +839,41 @@ module tb_axi_interconnect_uart_2master;
         master_read_single(1, UART_LSR, 32'h0000_0060, 8'h21, 1'b1);
 
         // --- Contention: M0 UART THR + M1 dummy S0 write (different slaves) ---
+        // The RX monitor runs concurrently with the writes: the transmitter
+        // drops tx before the fork/join returns, so arming it afterwards would
+        // miss the start bit entirely.
         $display("\n=== TWO-MASTER UART+DUMMY CONTENTION ===");
         fork
             master_write_single(0, UART_THR, 32'h0000_0055, 4'hF, 8'h30);
             master_write_single(1, S0_BASE + 32'h20, 32'hDEAD_BEEF, 4'hF, 8'h31);
-        join
-
-        // TX byte 0x55 must appear (counts as PASS).
-        begin
-            uart_recv_byte(rxb);
-            if (rxb !== 8'h55) begin
-                $display("ERROR: TX byte expected 55 got %02h", rxb);
-                fail_count = fail_count + 1;
-            end else begin
-                pass_count = pass_count + 1;
-                $display("[%0t] PASS UART TX byte 55", $time);
+            begin
+                // TX byte 0x55 must appear (counts as PASS).
+                uart_recv_byte(rxb);
+                if (rxb !== 8'h55) begin
+                    $display("ERROR: TX byte expected 55 got %02h", rxb);
+                    fail_count = fail_count + 1;
+                end else begin
+                    pass_count = pass_count + 1;
+                    $display("[%0t] PASS UART TX byte 55", $time);
+                end
             end
-        end
+        join
 
         // --- M1 UART THR + M0 dummy traffic ---
         fork
             master_write_single(1, UART_THR, 32'h0000_0041, 4'hF, 8'h32);
             master_read_single(0, S0_BASE + 32'h20, 32'hDEAD_BEEF, 8'h33, 1'b1);
-        join
-        begin
-            uart_recv_byte(rxb);
-            if (rxb !== 8'h41) begin
-                $display("ERROR: TX byte expected 41 got %02h", rxb);
-                fail_count = fail_count + 1;
-            end else begin
-                pass_count = pass_count + 1;
-                $display("[%0t] PASS UART TX byte 41", $time);
+            begin
+                uart_recv_byte(rxb);
+                if (rxb !== 8'h41) begin
+                    $display("ERROR: TX byte expected 41 got %02h", rxb);
+                    fail_count = fail_count + 1;
+                end else begin
+                    pass_count = pass_count + 1;
+                    $display("[%0t] PASS UART TX byte 41", $time);
+                end
             end
-        end
+        join
 
         // --- Same-target contention: concurrent LSR reads (both to M02) ---
         $display("\n=== SAME-TARGET (M02) READ CONTENTION ===");
@@ -880,17 +887,19 @@ module tb_axi_interconnect_uart_2master;
         master_read_single(0, S1_BASE + 32'h20, 32'hA5A5_0001, 8'h51, 1'b1);
 
         // --- Final UART byte via M0 ---
-        master_write_single(0, UART_THR, 32'h0000_005A, 4'hF, 8'h60);
-        begin
-            uart_recv_byte(rxb);
-            if (rxb !== 8'h5A) begin
-                $display("ERROR: TX byte expected 5A got %02h", rxb);
-                fail_count = fail_count + 1;
-            end else begin
-                pass_count = pass_count + 1;
-                $display("[%0t] PASS UART TX byte 5A", $time);
+        fork
+            master_write_single(0, UART_THR, 32'h0000_005A, 4'hF, 8'h60);
+            begin
+                uart_recv_byte(rxb);
+                if (rxb !== 8'h5A) begin
+                    $display("ERROR: TX byte expected 5A got %02h", rxb);
+                    fail_count = fail_count + 1;
+                end else begin
+                    pass_count = pass_count + 1;
+                    $display("[%0t] PASS UART TX byte 5A", $time);
+                end
             end
-        end
+        join
 
         if (uart_irq !== 1'b0) begin
             $display("ERROR: uart_irq should be 0, got %b", uart_irq);

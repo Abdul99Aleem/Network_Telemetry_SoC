@@ -30,6 +30,9 @@ module tb_axi_interconnect_uart;
     localparam integer BAUD_DIV = 8;
     localparam integer CLK_PERIOD_NS = 10;
     localparam integer BIT_PERIOD_NS = (BAUD_DIV + 1) * CLK_PERIOD_NS;
+    localparam integer START_TIMEOUT_CYCLES = 30000;
+    // A deadlock must be reported as FAIL, never as a silent hang.
+    localparam integer WATCHDOG_NS = 1_000_000;
 
     reg clk;
     reg rst;
@@ -260,34 +263,44 @@ module tb_axi_interconnect_uart;
 
     // ------------------------------------------------------------
     // UART RX monitor (8N1 at programmed divisor)
+    //
+    // The transmitter drops tx one clock before the outer AXI write response
+    // reaches this TB, so the monitor is normally armed after tx already fell.
+    // Polling for "tx low" tolerates that and anchors at most one clock late
+    // (10 ns against a 90 ns bit).
     // ------------------------------------------------------------
     task automatic uart_recv_byte(output [7:0] data);
         integer b;
+        integer guard;
         begin
-            fork
-                begin
-                    @(negedge uart_tx_o);
-                end
-                begin
-                    repeat (30000) @(posedge clk);
+            guard = 0;
+            while (uart_tx_o !== 1'b0) begin
+                @(posedge clk);
+                guard = guard + 1;
+                if (guard > START_TIMEOUT_CYCLES) begin
                     $display("ERROR: UART start-bit timeout");
-                    $fatal;
+                    $fatal(1, "UART start-bit timeout");
                 end
-            join_any
-            disable fork;
-            #(BIT_PERIOD_NS * 1.5 * 1000);
+            end
+            #(BIT_PERIOD_NS * 1.5);
             for (b = 0; b < 8; b = b + 1) begin
                 data[b] = uart_tx_o;
-                #(BIT_PERIOD_NS * 1000);
+                #(BIT_PERIOD_NS);
             end
             if (uart_tx_o !== 1'b1) begin
                 $display("ERROR: UART stop bit not high");
-                $fatal;
+                $fatal(1, "UART stop bit not high");
             end
-            #(BIT_PERIOD_NS * 1000);
+            #(BIT_PERIOD_NS);
             $display("UART RX byte = %02h", data);
         end
     endtask
+
+    initial begin
+        #WATCHDOG_NS;
+        $display(" AXI INTERCONNECT -> UART INTEGRATION: FAIL (watchdog after %0d ns)", WATCHDOG_NS);
+        $fatal(1, "watchdog timeout");
+    end
 
     reg [31:0] lsr;
     reg [7:0]  rx0, rx1, rx2;
@@ -365,28 +378,37 @@ module tb_axi_interconnect_uart;
         $display("CONFIG PASS");
 
         // [3] TX bytes through the interconnect.
+        // The monitor runs concurrently with the write: the transmitter drops
+        // tx before the write response returns, so arming afterwards can miss
+        // the start bit.
         $display("\n[3] UART TX bytes through interconnect");
-        axi_write(ADDR_THR, 32'h0000_0055);
-        uart_recv_byte(rx0);
+        fork
+            axi_write(ADDR_THR, 32'h0000_0055);
+            uart_recv_byte(rx0);
+        join
         if (rx0 !== 8'h55) begin
             $display("ERROR: byte0 expected 55 got %02h", rx0);
-            $fatal;
+            $fatal(1, "byte0 mismatch");
         end
         $display("TX 0x55 PASS");
 
-        axi_write(ADDR_THR, 32'h0000_0041);
-        uart_recv_byte(rx1);
+        fork
+            axi_write(ADDR_THR, 32'h0000_0041);
+            uart_recv_byte(rx1);
+        join
         if (rx1 !== 8'h41) begin
             $display("ERROR: byte1 expected 41 got %02h", rx1);
-            $fatal;
+            $fatal(1, "byte1 mismatch");
         end
         $display("TX 0x41 PASS");
 
-        axi_write(ADDR_THR, 32'h0000_005A);
-        uart_recv_byte(rx2);
+        fork
+            axi_write(ADDR_THR, 32'h0000_005A);
+            uart_recv_byte(rx2);
+        join
         if (rx2 !== 8'h5A) begin
             $display("ERROR: byte2 expected 5A got %02h", rx2);
-            $fatal;
+            $fatal(1, "byte2 mismatch");
         end
         $display("TX 0x5A PASS");
 

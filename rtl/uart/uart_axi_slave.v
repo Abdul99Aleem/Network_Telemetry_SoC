@@ -487,18 +487,33 @@ module uart_axi_slave #(
                 R_IDLE: begin
                 end
                 R_WAIT_RDY: begin
-                    if (inner_arready) begin
+                    // axi_uart_top gates BOTH axi_arready_o and axi_rvalid_o on
+                    // axi_arvalid_i (see axi_uart_top.v:231/235) and asserts them
+                    // together for exactly one cycle in IdleReadState. So ARVALID
+                    // must be held until the data beat is captured, and the
+                    // ARREADY+RVALID coincidence must be handled on this edge --
+                    // dropping ARVALID first would gate RVALID to 0 and deadlock.
+                    if (inner_arready && inner_rvalid) begin
+                        rid_reg       <= rd_id;
+                        rdata_reg     <= inner_rdata;
+                        rresp_reg     <= inner_rresp;
+                        inner_rready  <= 1'b1;
                         inner_arvalid <= 1'b0;
-                        rstate        <= R_WAIT_R;
+                        rstate        <= R_ACK_IP;
+                    end else if (inner_arready) begin
+                        // ARREADY alone: keep ARVALID high so the IP can still
+                        // present RVALID on a later cycle.
+                        rstate <= R_WAIT_R;
                     end
                 end
                 R_WAIT_R: begin
                     if (inner_rvalid) begin
-                        rid_reg      <= rd_id;
-                        rdata_reg    <= inner_rdata;
-                        rresp_reg    <= inner_rresp;
-                        inner_rready <= 1'b1;
-                        rstate       <= R_ACK_IP;
+                        rid_reg       <= rd_id;
+                        rdata_reg     <= inner_rdata;
+                        rresp_reg     <= inner_rresp;
+                        inner_rready  <= 1'b1;
+                        inner_arvalid <= 1'b0;
+                        rstate        <= R_ACK_IP;
                     end
                 end
                 R_ACK_IP: begin
