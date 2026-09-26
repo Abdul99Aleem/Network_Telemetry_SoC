@@ -1,13 +1,21 @@
 # ============================================================
-# RISC-V Network Telemetry SoC — git ignore rules
+# RISC-V Network Telemetry SoC — .gitignore
 #
-# Principle: RTL, testbenches, docs, flow scripts and VCS filelists
-# are versioned. Everything a tool generates (binaries, logs,
-# waveforms, GUI state) is ignored.
+# VERSIONED (never ignored):
+#   rtl/  tb/  scripts/  doc/  aes/  core/  README
+#   run/  -> only *.f (filelists), *.csh (flows), *.tcl, *.rc
+#            (Verdi signal groups)
+#
+# IGNORED: everything a tool generates (VCS/Verdi binaries, logs,
+#   waveforms, GUI state), plus local archives and third-party
+#   drop-ins whose sources are already vendored into rtl/.
+#
+# Rule of thumb: if you created it by hand and a fresh clone needs
+#   it, it is NOT ignored. If a tool can rebuild it, it IS.
 # ============================================================
 
 # ------------------------------------------------------------
-# VCS build / run products (anywhere in the tree)
+# 1. VCS / simulator build products (anywhere in the tree)
 # ------------------------------------------------------------
 simv
 simv.*
@@ -15,19 +23,22 @@ simv.daidir/
 simv.vdb/
 csrc/
 ucli.key
+vc_hdrs.h
 *.so
 *.a
 *.o
-vc_hdrs.h
 *_archive_*.so
 
-# VCS / simulation logs and reports
+# ------------------------------------------------------------
+# 2. Simulation logs and reports
+# ------------------------------------------------------------
 *.log
-vcs_run.log
-sim_stdout.log
+*.log.*
 verdi_config_file
 
-# Waveforms and dumps
+# ------------------------------------------------------------
+# 3. Waveforms, dumps and EDA GUI state
+# ------------------------------------------------------------
 *.fsdb
 *.vpd
 *.vcd
@@ -35,17 +46,21 @@ verdi_config_file
 *.trn
 *.dsn
 *.vdb
-verdiLog/
+*.ses
+*.ses.*
 novas.conf
 novas.rc
 novas_dump.log
 novas.*.log*
-*.ses
-*.ses.config
-*.ses.wave.*
-*.ses.png
+verdiLog/
 DVEfiles/
 dve_replay/
+*.wlf
+transcript
+
+# ------------------------------------------------------------
+# 4. Coverage / profiling databases
+# ------------------------------------------------------------
 urgReport/
 urgReport.*
 coverage/
@@ -56,42 +71,58 @@ INCA_libs/
 xcelium.d/
 .cm/
 *.cm
-
-# Coverage / profiling databases
 *.sdb
 *.db
 *.dat
 *.key
 
 # ------------------------------------------------------------
-# run/ — simulation scratch area
-# Ignore everything EXCEPT the versioned flow assets below.
-# (VCS filelists *.f already tracked stay tracked.)
+# 5. run/ — simulation scratch area
+#    Ignore everything, then re-include only flow assets.
+#    (Keep the "re-ignore" block at the end: Verdi/VCS drop
+#    novas.rc / verdi_config_file in run/ and they match *.rc.)
 # ------------------------------------------------------------
 run/*
 !run/.gitkeep
 !run/*.f
-!run/p[0-9]_*.csh
-!run/p[0-9]_*.tcl
-!run/p[0-9]_*.rc
-!run/axi_wave.rc
-!run/wave.rc
+!run/*.csh
+!run/*.tcl
+!run/*.rc
+run/novas.rc
+run/verdi_config_file
 
 # ------------------------------------------------------------
-# Software / C build products
+# 6. Software / firmware build products
+#    NOTE: source files (main.c, linker.ld, *.c, *.h) are NEVER
+#    ignored — only what the toolchain emits.
 # ------------------------------------------------------------
 *.elf
 *.exe
 *.out
 *.bin
-*.hex.generated
+*.hex
 *.lst
 *.map
 *.d
+*.o.d
 program.hex
 
 # ------------------------------------------------------------
-# Generated docs / reports
+# 7. Archives and third-party drop-ins
+#    Sources are vendored into rtl/, so archives/extracted trees
+#    are local scratch only.
+# ------------------------------------------------------------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+aes.zip
+axi-lite_uart-ipcore-develop/
+
+# ------------------------------------------------------------
+# 8. Generated docs / reports
 # ------------------------------------------------------------
 doc/generated/
 reports/generated/
@@ -102,7 +133,7 @@ artifacts/
 *.synctex.gz
 
 # ------------------------------------------------------------
-# Python / env / IDE / OS
+# 9. Python / environment / editor / OS
 # ------------------------------------------------------------
 __pycache__/
 *.py[cod]
@@ -127,12 +158,15 @@ Thumbs.db
 \#*\#
 .\#*
 
+# LibreOffice / Word lock + autosave files (e.g. doc/.~lock.X.docx#)
+.~lock.*
+\#*\#
+*.docx#
+
 # ------------------------------------------------------------
-# Scratch
+# 10. Scratch
 # ------------------------------------------------------------
 tmp/
 temp/
 scratch/
 notes_private/
-main.c
-test.c
