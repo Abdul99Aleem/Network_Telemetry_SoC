@@ -1,0 +1,125 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; UART AXI interconnect (single master) - Verdi Wave RC
+; Mirrors run/axi_wave.rc + run/p2_wave.rc style, with correct
+; hierarchy for tb_axi_interconnect_uart.
+;
+; Load (from run/ after sim):
+;   verdi -ssf uart_axi_interconnect.fsdb -dbdir simv.daidir \
+;     -sswr ~/Documents/honours_project/run/uart_wave.rc &
+;
+; Covers: S00 AW/W/B + AR/R handshakes, M02 routing, wrapper outer/inner
+; FSMs, IP write/read FSMs, baud config, TX FIFO + transmitter, uart_tx.
+; PASS ends with "AXI INTERCONNECT -> UART INTEGRATION: PASS".
+; ============================================================
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/home/student/Documents/honours_project/run/uart_axi_interconnect.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 6000.000000
+cursor 0.000000
+marker 0.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_axi_interconnect_uart/clk
+addSignal -h 15 -holdScope rst
+
+addGroup "2 S00 Write Addr (AW)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/s00_axi_awaddr[31:0]
+addSignal -h 15 -holdScope s00_axi_awvalid
+addSignal -h 15 -holdScope s00_axi_awready
+
+addGroup "3 S00 Write Data (W)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/s00_axi_wdata[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope s00_axi_wstrb[3:0]
+addSignal -h 15 -holdScope s00_axi_wvalid
+addSignal -h 15 -holdScope s00_axi_wready
+addSignal -h 15 -holdScope s00_axi_wlast
+
+addGroup "4 S00 Write Resp (B)"
+addSignal -h 15 -holdScope /tb_axi_interconnect_uart/s00_axi_bvalid
+addSignal -h 15 -holdScope s00_axi_bready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s00_axi_bresp[1:0]
+
+addGroup "5 S00 Read Addr (AR)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/s00_axi_araddr[31:0]
+addSignal -h 15 -holdScope s00_axi_arvalid
+addSignal -h 15 -holdScope s00_axi_arready
+
+addGroup "6 S00 Read Data (R)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/s00_axi_rdata[31:0]
+addSignal -h 15 -holdScope s00_axi_rvalid
+addSignal -h 15 -holdScope s00_axi_rready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s00_axi_rresp[1:0]
+addSignal -h 15 -holdScope s00_axi_rlast
+
+addGroup "7 UART pins"
+addSignal -h 15 /tb_axi_interconnect_uart/uart_tx_o
+addSignal -h 15 -holdScope uart_irq
+addSignal -h 15 -holdScope uart_rx_i
+
+addGroup "8 Wrapper M02 (interconnect -> UART)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/dut/m02_axi_awaddr[31:0]
+addSignal -h 15 -holdScope m02_axi_awvalid
+addSignal -h 15 -holdScope m02_axi_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m02_axi_wdata[31:0]
+addSignal -h 15 -holdScope m02_axi_wvalid
+addSignal -h 15 -holdScope m02_axi_wready
+addSignal -h 15 -holdScope m02_axi_bvalid
+addSignal -h 15 -holdScope m02_axi_bready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m02_axi_araddr[31:0]
+addSignal -h 15 -holdScope m02_axi_arvalid
+addSignal -h 15 -holdScope m02_axi_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m02_axi_rdata[31:0]
+addSignal -h 15 -holdScope m02_axi_rvalid
+addSignal -h 15 -holdScope m02_axi_rready
+
+addGroup "9 Slave outer FSM (uart_axi_slave)"
+addSignal -h 15 -holdScope /tb_axi_interconnect_uart/dut/uart_inst/aw_pending
+addSignal -h 15 -holdScope w_pending
+addSignal -h 15 -holdScope bvalid_reg
+addSignal -h 15 -holdScope rvalid_reg
+addSignal -h 15 -holdScope wr_active
+addSignal -h 15 -UNSIGNED -HEX -holdScope wstate[1:0]
+addSignal -h 15 -holdScope rd_active
+addSignal -h 15 -UNSIGNED -HEX -holdScope rstate[1:0]
+
+addGroup "10 IP AXI-Lite (inner)"
+addSignal -h 15 -holdScope /tb_axi_interconnect_uart/dut/uart_inst/inner_awvalid
+addSignal -h 15 -holdScope inner_awready
+addSignal -h 15 -holdScope inner_wvalid
+addSignal -h 15 -holdScope inner_wready
+addSignal -h 15 -holdScope inner_bvalid
+addSignal -h 15 -holdScope inner_bready
+addSignal -h 15 -holdScope inner_arvalid
+addSignal -h 15 -holdScope inner_arready
+addSignal -h 15 -holdScope inner_rvalid
+addSignal -h 15 -holdScope inner_rready
+addSignal -h 15 -UNSIGNED -HEX -holdScope inner_rdata[31:0]
+
+addGroup "11 IP config + FIFOs"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/dut/uart_inst/u_uart/uart_config_reg_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_baudrate_div_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_lsr_reg_int[31:0]
+addSignal -h 15 -holdScope write_state[2:0]
+addSignal -h 15 -holdScope read_state[3:0]
+
+addGroup "12 Transmitter (TX byte proof)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart/dut/uart_inst/u_uart/uart_controller_inst/uart_transmitter_inst/state[4:0]
+addSignal -h 15 -holdScope tx
+addSignal -h 15 -holdScope busy
+addSignal -h 15 -holdScope tx_ready
+addSignal -h 15 -UNSIGNED -HEX -holdScope tx_data_int[7:0]

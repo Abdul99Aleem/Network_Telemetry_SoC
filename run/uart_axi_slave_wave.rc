@@ -1,0 +1,81 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; UART direct slave (no interconnect) - Verdi Wave RC
+; Hierarchy: tb_uart_axi_slave, DUT dut (uart_axi_slave).
+; FSDB: run/uart_axi_slave.fsdb
+;
+; Load (from run/ after sim):
+;   verdi -ssf uart_axi_slave.fsdb -dbdir simv.daidir \
+;     -sswr ~/Documents/honours_project/run/uart_axi_slave_wave.rc &
+;
+; Covers: outer AW/W/B + AR/R, inner AXI-Lite to axi_uart_top,
+; LCR/BAUD/IER/THR writes, LSR reads, TX FIFO + transmitter, uart_tx.
+; PASS ends with "UART AXI SLAVE DIRECT: PASS".
+; ============================================================
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/home/student/Documents/honours_project/run/uart_axi_slave.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 5000.000000
+cursor 0.000000
+marker 0.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_uart_axi_slave/clk
+addSignal -h 15 -holdScope rst
+
+addGroup "2 Write (AW/W/B)"
+addSignal -h 15 -UNSIGNED -HEX /tb_uart_axi_slave/s_axi_awaddr[31:0]
+addSignal -h 15 -holdScope s_axi_awvalid
+addSignal -h 15 -holdScope s_axi_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s_axi_wdata[31:0]
+addSignal -h 15 -holdScope s_axi_wvalid
+addSignal -h 15 -holdScope s_axi_wready
+addSignal -h 15 -holdScope s_axi_bvalid
+addSignal -h 15 -holdScope s_axi_bready
+
+addGroup "3 Read (AR/R)"
+addSignal -h 15 -UNSIGNED -HEX /tb_uart_axi_slave/s_axi_araddr[31:0]
+addSignal -h 15 -holdScope s_axi_arvalid
+addSignal -h 15 -holdScope s_axi_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s_axi_rdata[31:0]
+addSignal -h 15 -holdScope s_axi_rvalid
+addSignal -h 15 -holdScope s_axi_rready
+
+addGroup "4 UART pins"
+addSignal -h 15 /tb_uart_axi_slave/uart_tx_o
+addSignal -h 15 -holdScope uart_irq
+
+addGroup "5 Slave FSM"
+addSignal -h 15 -holdScope /tb_uart_axi_slave/dut/wr_active
+addSignal -h 15 -UNSIGNED -HEX -holdScope wstate[1:0]
+addSignal -h 15 -holdScope rd_active
+addSignal -h 15 -UNSIGNED -HEX -holdScope rstate[1:0]
+addSignal -h 15 -holdScope /tb_uart_axi_slave/dut/inner_awvalid
+addSignal -h 15 -holdScope inner_awready
+addSignal -h 15 -holdScope inner_wvalid
+addSignal -h 15 -holdScope inner_wready
+addSignal -h 15 -holdScope inner_bvalid
+addSignal -h 15 -holdScope inner_arvalid
+addSignal -h 15 -holdScope inner_rvalid
+
+addGroup "6 IP + TX"
+addSignal -h 15 -UNSIGNED -HEX /tb_uart_axi_slave/dut/u_uart/uart_config_reg_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_baudrate_div_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_lsr_reg_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX /tb_uart_axi_slave/dut/u_uart/uart_controller_inst/uart_transmitter_inst/state[4:0]
+addSignal -h 15 -holdScope tx
+addSignal -h 15 -holdScope busy

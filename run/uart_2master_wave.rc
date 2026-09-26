@@ -1,0 +1,106 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; UART AXI 2-master contention - Verdi Wave RC
+; Hierarchy: tb_axi_interconnect_uart_2master.
+; FSDB: run/uart_axi_2master.fsdb (dumped in TB initial block).
+;
+; Load (from run/ after sim):
+;   verdi -ssf uart_axi_2master.fsdb -dbdir simv.daidir \
+;     -sswr ~/Documents/honours_project/run/uart_2master_wave.rc &
+;
+; Covers: M0/M1 AW/W/B + AR/R, M02 UART routing vs dummy S0/S1,
+; arbitration (fork contention), response IDs, TX bytes, IRQ quiet.
+; PASS ends with "*** TWO-MASTER UART TEST PASSED ***" (19/0).
+; ============================================================
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/home/student/Documents/honours_project/run/uart_axi_2master.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 12000.000000
+cursor 0.000000
+marker 0.000000
+
+top 0
+markerPos 0
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /tb_axi_interconnect_uart_2master/clk
+addSignal -h 15 -holdScope rst
+
+addGroup "2 M0 Write (S00)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/m0_awaddr[31:0]
+addSignal -h 15 -holdScope m0_awvalid
+addSignal -h 15 -holdScope m0_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m0_wdata[31:0]
+addSignal -h 15 -holdScope m0_wvalid
+addSignal -h 15 -holdScope m0_wready
+addSignal -h 15 -holdScope m0_bvalid
+addSignal -h 15 -holdScope m0_bready
+
+addGroup "3 M0 Read (S00)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/m0_araddr[31:0]
+addSignal -h 15 -holdScope m0_arvalid
+addSignal -h 15 -holdScope m0_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m0_rdata[31:0]
+addSignal -h 15 -holdScope m0_rvalid
+addSignal -h 15 -holdScope m0_rready
+
+addGroup "4 M1 Write (S01)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/m1_awaddr[31:0]
+addSignal -h 15 -holdScope m1_awvalid
+addSignal -h 15 -holdScope m1_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m1_wdata[31:0]
+addSignal -h 15 -holdScope m1_wvalid
+addSignal -h 15 -holdScope m1_wready
+addSignal -h 15 -holdScope m1_bvalid
+addSignal -h 15 -holdScope m1_bready
+
+addGroup "5 M1 Read (S01)"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/m1_araddr[31:0]
+addSignal -h 15 -holdScope m1_arvalid
+addSignal -h 15 -holdScope m1_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope m1_rdata[31:0]
+addSignal -h 15 -holdScope m1_rvalid
+addSignal -h 15 -holdScope m1_rready
+
+addGroup "6 M02 UART target"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/s2_awaddr[31:0]
+addSignal -h 15 -holdScope s2_awvalid
+addSignal -h 15 -holdScope s2_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s2_wdata[31:0]
+addSignal -h 15 -holdScope s2_wvalid
+addSignal -h 15 -holdScope s2_wready
+addSignal -h 15 -holdScope s2_bvalid
+addSignal -h 15 -holdScope s2_bready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s2_araddr[31:0]
+addSignal -h 15 -holdScope s2_arvalid
+addSignal -h 15 -holdScope s2_arready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s2_rdata[31:0]
+addSignal -h 15 -holdScope s2_rvalid
+addSignal -h 15 -holdScope s2_rready
+
+addGroup "7 UART pins + slave FSM"
+addSignal -h 15 /tb_axi_interconnect_uart_2master/uart_tx_o
+addSignal -h 15 -holdScope uart_irq
+addSignal -h 15 -holdScope /tb_axi_interconnect_uart_2master/uart_slave_inst/wr_active
+addSignal -h 15 -UNSIGNED -HEX -holdScope wstate[1:0]
+addSignal -h 15 -holdScope rd_active
+addSignal -h 15 -UNSIGNED -HEX -holdScope rstate[1:0]
+
+addGroup "8 IP config + TX"
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/uart_slave_inst/u_uart/uart_config_reg_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_baudrate_div_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope uart_lsr_reg_int[31:0]
+addSignal -h 15 -UNSIGNED -HEX /tb_axi_interconnect_uart_2master/uart_slave_inst/u_uart/uart_controller_inst/uart_transmitter_inst/state[4:0]
+addSignal -h 15 -holdScope tx
+addSignal -h 15 -holdScope busy
