@@ -260,6 +260,11 @@ inspect: $(BUILD)/firmware.elf $(BUILD)/imem.mem $(BUILD)/dmem.mem
 	@undef=$$($(NM) -u $< 2>/dev/null | grep -v '^[[:space:]]*$$' || true); \
 	 if [ -n "$$undef" ]; then echo "[SW] FAIL G7: undefined symbols:"; echo "$$undef"; exit 1; fi
 	@echo "[SW]     'There is no dynamic section' + 0 undefined symbols"
+	@test -s $(BUILD)/firmware.map || { echo "[SW] FAIL G7: no link map"; exit 1; }
+	@if grep -qi "overflowed\|region .* overflows" $(BUILD)/firmware.map; then \
+	   echo "[SW] FAIL G7: region overflow in link map:"; \
+	   grep -i "overflowed\|region .* overflows" $(BUILD)/firmware.map; exit 1; fi
+	@echo "[SW]     link map has no region overflow (veer.ld ASSERTs back this up)"
 	@echo "[SW]     Amendment A1: without -nostdlib the first __udivdi3 reference"
 	@echo "[SW]     aborts with 'libgcc.a file class ELFCLASS64 incompatible'"
 	@echo "[SW] PASS G7"

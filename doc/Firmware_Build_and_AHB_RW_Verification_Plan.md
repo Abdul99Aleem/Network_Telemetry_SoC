@@ -4,8 +4,15 @@
 **Scope:** the three requested steps — (1) write a C file, (2) verify `make`
 through a Makefile and confirm the hex is generated, (3) verify the RISC-V
 core's read/write cycles in Verdi against IPs on the core bus.
-**Status:** PLAN — ready for implementation
+**Status:**
+- Step 1 (write the C file) — **IMPLEMENTED**
+- Step 2 (Makefile + hex gates G1–G12) — **IMPLEMENTED, gates PASS**
+- Step 3a (AHB cycle monitor + Verdi) — pending
+- Step 3b (peripheral read/write) — pending
+- Evidence: `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md`
+
 **Date:** 2026-09-26
+**Branch:** `feature/sw-build-ahb-rw`
 
 **Authoritative spec for this work:**
 `doc/RISC_V_SW_Build_and_Simulation_Image_Architecture_Specification.md`
@@ -16,6 +23,8 @@ evidence that the spec's §16 verification levels require, and records
 findings that are **new since rev 1.5**.
 
 **Other related records:**
+`doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` (Steps 1–2 results, gate log,
+defects found) ·
 `doc/SW_HW_Memory_Image_Architecture_First_Principles_and_Spec_Amendments.md`
 (amendments `H.1`–`H.9`) · `doc/Phase2_AHB_Fabric_Completion_Record.md` ·
 `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md`.
@@ -113,6 +122,16 @@ helper (`__udivdi3`), the link aborts with an ELFCLASS64/ELFCLASS32 mismatch.
 `memset`/`memmove`. This makes a missing helper a *loud, immediate* link
 error instead of an archive-arch mismatch deep inside ld. Never add `-lgcc`.
 
+> **VERIFIED 2026-09-26 (both halves).** fw0 links to exit status 0 with
+> `-nostartfiles` alone, confirming the archive argument above; a test file
+> using a 64-bit divide then fails exactly as predicted
+> (`libgcc.a(div.o): file class ELFCLASS64 incompatible with ELFCLASS32`), and
+> fails cleanly with `undefined reference to __udivdi3` under `-nostdlib`.
+> `sw/Makefile` uses A1 and **G7** asserts the link is freestanding.
+> Full evidence: `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` §6.
+> The risk row for this finding is therefore downgraded High → Medium: it is a
+> *future* failure mode, not a present blocker.
+
 ### N4 — Blocker: `/tmp/opencode/veer_p2` is root-owned, `student` cannot write it
 
 ```console
@@ -134,6 +153,48 @@ the flow can run at all under this account.
 `VCS_HOME=/home/student/snps_tools_target/vcs/U-2023.03` (not on `PATH`) ·
 `VERDI_HOME=/home/student/snps_tools_target/verdi/U-2023.03-SP1`.
 Never force `DISPLAY :42`.
+
+### N6 — `objcopy -O verilog` emits `@` from the section **LMA**, not the VMA
+
+**Found while building `dmem.mem` (Step 2).** With the spec §6.2 command
+`--change-addresses=-0x00010000`, the output was:
+
+```verilog
+@FFFFFFFFFFFF029C
+EE FF C0 00
+```
+
+`.data` has `VMA = 0x00010010` but `LMA = 0x0000029C`, so the shift computed
+`0x29C - 0x10000` — a negative array index, out of range for the 32 KB dense
+`ahb_sram` array.
+
+The §6.2 command remains **correct for `imem.mem`**: there the LMA *is* the
+physically right place (the `.data` load bytes really live in IMEM at
+`0x0000029C`, and `startup.S` copies from there). Only the DMEM overlay needs
+the VMA, and `--change-section-lma` cannot be composed with
+`--change-addresses` (applied after it — combining them yields the un-rebased
+`0x00010010`).
+
+**Resolution:** `sw/Makefile` computes the `.data` VMA from `nm`, subtracts
+`DMEM_BASE`, and passes the result to `--change-section-lma`. Guarded by
+**G9**. Analysis: `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` §5.1.
+**Feed back to spec §6.2 as an amendment.**
+
+### N7 — `objcopy -O verilog` writes CRLF; `\r` is not `$readmemh` whitespace
+
+**Also found while building the images.** Every record ends with `\r\n`:
+
+```console
+$ od -c build/imem.mem | head -1
+0000000   @   0   0   0   0   0   0   0   0  \r  \n   1   7  ...
+```
+
+IEEE 1800 §21.7 lists `$readmemh` whitespace as *{space, tab, newline,
+formfeed, comment}* — `\r` is absent, so a strict reader can fold the CR into
+the first hex token of the image.
+
+**Resolution:** both image rules run `sed -i 's/\r$//'`; guarded by **G10**.
+Analysis: record §5.2. **Feed back to spec §6.2 as an amendment.**
 
 ---
 
@@ -166,6 +227,9 @@ recorded so they are not accidentally reintroduced:**
 ---
 
 # 3. Step 1 — write the C file (spec `S1`, `S2`)
+
+> **IMPLEMENTED** — see `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` §1.
+> Files as listed below; zero existing files modified except `.gitignore`.
 
 ```text
 sw/
@@ -261,6 +325,21 @@ a violation fails loudly.
 ---
 
 # 4. Step 2 — Makefile and hex-generation gates (spec `S3`, `S4`)
+
+> **IMPLEMENTED, G1–G12 PASS** — full results in
+> `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` §4. Gate numbering in
+> `sw/Makefile` matches the table below exactly, so the build log can be
+> diffed against it. **G13 is deferred to Step 3a** (it needs a sim run).
+>
+> Two defects were found and fixed during implementation — both are now
+> regression-guarded by the gates themselves:
+> * **G9** — `objcopy -O verilog` emits `@` from the section **LMA**, so the
+>   §6.2 `--change-addresses=-DMEM_BASE` produced `@FFFFFFFFFF029C` for
+>   `dmem.mem` (negative index). Fixed with `--change-section-lma`.
+>   Full analysis: record §5.1.
+> * **G10** — `objcopy` writes **CRLF**, and `\r` is not in IEEE 1800 §21.7's
+>   `$readmemh` whitespace set. Images are normalized to LF.
+>   Full analysis: record §5.2.
 
 ## 4.1 Structure (spec §8)
 
@@ -561,7 +640,7 @@ first precisely because the tree is currently being edited in parallel.
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
 | Link fails on `__udivdi3`/`memcpy` (Amendment A1) | **High** | Expected and desirable. Fix the C or extend `lib.c`. Never add `-lgcc` (RV64-only, N3). |
-| Spec §8.2 `LDFLAGS` used as-written → ELFCLASS64 link abort | High | Apply A1 before first build. |
+| Spec §8.2 `LDFLAGS` used as-written → future ELFCLASS64 link abort | Medium | Apply A1 before first build. **Narrowed by evidence:** fw0 links today without `-nostdlib` (archives pull nothing until referenced); it breaks only once a libgcc helper is needed, then as `libgcc.a file class ELFCLASS64 incompatible with ELFCLASS32` instead of a clean `undefined reference`. See record §6. |
 | Sibling session edits `ahb_interconnect.sv`/`soc_top.sv` while we do | **High** | §7 rules: Steps 1–2 first; re-check `git status` before any RTL edit; coordinate for 3b. |
 | `S7`/`S7b` split → t=0 zero-fill race silently wipes the image | Medium | Land both in one change (spec §9.2), and verify with the §15 init log showing non-zero byte count after load. |
 | `@` record out of range (forgot `--change-addresses`) | Medium | Gates G9 + spec §14 hard-fail. |
@@ -586,6 +665,16 @@ first precisely because the tree is currently being edited in parallel.
 
 # 12. Definition of done
 
+**Progress so far:**
+
+- [x] Item 1, gates **G1–G12** — PASS (G13 needs the sim run, item 3)
+- [x] Item 2 — PASS
+- [ ] Item 3 — `make sim` (Step 3a)
+- [ ] Item 4 — Verdi waveform evidence (Step 3a)
+- [ ] Item 5 — final record + spec rev 1.6
+
+Evidence for items 1–2: `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md`.
+
 **This plan is done when:**
 
 1. `make -C sw all inspect` passes gates **G1–G13** — the hex is generated
@@ -599,6 +688,7 @@ first precisely because the tree is currently being edited in parallel.
    `doc/screenshots/` contains the first-DMEM-write and first-DMEM-read-back
    captures, with the §5.3 checklist table filled in
    (**step 3, waveform half**).
-5. `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` exists with logs +
-   waveforms, and the four amendments A1–A4 are folded back into the spec as
+5. A `doc/*_Record.md` exists for steps 1–2 (`Fw0_C_Toolchain_Build_and_Gate_Record.md`,
+   **done**) and for step 3, with logs + waveforms, and the four amendments
+   A1–A4 — plus the new **N6** and **N7** — are folded back into the spec as
    rev 1.6.
