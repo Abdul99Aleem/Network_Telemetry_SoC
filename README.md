@@ -140,17 +140,18 @@ the manual record.
 
 | Metric | Value |
 |---|---|
-| Commits so far (`git rev-list --count HEAD`) | **22** |
+| Commits so far (`git rev-list --count HEAD`) | **25** |
 | Active window | **28 days** — 2026-08-29 → 2026-09-26 |
 | Developers | **1** (two git identities: lab account + GitHub) |
-| Tracked files | **112** |
-| Lines committed in `HEAD` (excl. CPU submodule) | **41,332** |
+| Tracked files | **119** |
+| Lines committed in `HEAD` (excl. CPU submodule) | **44,503** |
 | → RTL (`rtl/`) | 7,489 lines / 26 files |
-| → Testbenches (`tb/`) | 6,678 lines / 10 benches |
-| → Flow (`run/`) | 1,419 lines / 26 files (11 filelists, 7 `csh` flows, Verdi RCs) |
+| → Testbenches (`tb/`) | 6,928 lines / 11 benches |
+| → Flow (`run/`) | 1,517 lines / 27 files (11 filelists, 7 `csh` flows, Verdi RCs) |
 | → Firmware (`sw/`) | 788 lines / 6 files |
+| → Simulation flow (`sim/`) | 177 lines / 2 files |
 | → Scripts (`scripts/`) | 607 lines / 3 generators |
-| → Documentation (`doc/`) | 19,815 lines / 17 documents |
+| → Documentation (`doc/`) | 22,394 lines / 19 documents |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
 | Regression groups passing | **6** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end) |
 | Regression groups in progress | **0** |
@@ -159,11 +160,11 @@ Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
 
 ```bash
-git rev-list --count HEAD                                    # 22 commits
+git rev-list --count HEAD                                    # 25 commits
 git log --reverse --format=%ad --date=short | head -1        # first commit
-git ls-files | wc -l                                         # 112 tracked files
-git archive HEAD | tar -xO | wc -l                           # 41332 committed lines
-for d in rtl tb run scripts doc sw; do                       # per-directory
+git ls-files | wc -l                                         # 119 tracked files
+git archive HEAD | tar -xO | wc -l                           # 44503 committed lines
+for d in rtl tb run scripts doc sw sim; do                   # per-directory
   printf '%-8s %6d %3d files\n' "$d" \
     "$(git archive HEAD $d | tar -xO | wc -l)" \
     "$(git ls-files "$d/*" | wc -l)"
@@ -181,6 +182,7 @@ git shortlog -sn --all                                       # contributors
 | — | UART AXI subsystem, isolated (direct / interconnect / 2-master) | **PASS** | `UART AXI SLAVE DIRECT: PASS`, `AXI INTERCONNECT -> UART INTEGRATION: PASS`, 2-master 19/0 — run 2026-09-26 15:18 |
 | — | RISC-V GNU toolchain bring-up | **PASS** | `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md` |
 | M3 | UART on the SoC: AHB→AXI bridge at `0x1000_0000` + E2E testbench | **PASS** | `doc/Phase3_UART_End_To_End_Completion_Record.md` — `UART_E2E_RESULT: PASS` (`55 41 52 54 0a` + `DMEM[2]=ff` + `DMEM[4..7]=60 00 00 00`) and fabric TB1 `23/23` → `P2_TB1_RESULT: PASS`, run 2026-09-26 17:42 |
+| — | fw0 firmware on the SoC: `sw/` build → `imem.mem`/`dmem.mem` → VeeR boot → AHB R/W in Verdi | **PASS** | `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` — `P2_TB2_RESULT: PASS` + `AHB_RW_MONITOR: PASS` (`imem_rd=2393 imem_wr=0 dmem_rd=366 dmem_wr=164 bus_err=0 def=0`), gates G1–G13, run 2026-09-26 18:10 |
 | M4 | AES on the SoC (bridge + driver) | **NOT STARTED** | |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |
@@ -201,6 +203,9 @@ same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 - [x] UART AXI slave read handshake fixed; all three UART benches now pass (direct, interconnect, 2-master 19/0) with watchdogs instead of silent stalls
 - [x] AHB↔AXI bridge + UART attached to `soc_top` at `0x1000_0000`, fabric TB1 extended with bridge T11/T12 (PASS)
 - [x] UART end-to-end run completing: `UART_E2E_RESULT: PASS` — 5/5 serial bytes, DMEM terminator, LSR read-back through the bridge, zero exceptions (`doc/Phase3_UART_End_To_End_Completion_Record.md`)
+- [x] fw0: C firmware, `sw/Makefile` image gates G1–G13, `imem.mem`/`dmem.mem` generated and validated
+- [x] fw0: VeeR boots the C program through the fabric and writes the DMEM mailbox — `P2_TB2_RESULT: PASS`
+- [x] fw0: additive AHB read/write-cycle monitor gating `AHB_RW_MONITOR: PASS`, all eight Verdi checklist rows proved cycle-by-cycle (`doc/Firmware_Build_and_AHB_RW_Verification_Record.md`)
 - [ ] UVM base environment: `uvm_component_utils`-registered components, virtual interfaces handed around with `uvm_config_db`, one `run_test()` entry point
 - [ ] UVM factory overrides so the same env runs directed / random / constrained-random tests without editing the environment
 - [ ] UVM agents + scoreboards + functional coverage for AXI, AHB-Lite and UART
@@ -342,9 +347,11 @@ Network_Telemetry_SoC/
 │   ├── uart/                   # UART AXI slave wrapper + vendored UART IP (ip/)
 │   └── interconnects/          # AXI 2x8 interconnect, arbiter, priority encoder
 ├── sw/                         # bare-metal firmware: src/, include/, linker/, Makefile
+├── sim/                        # VCS/Verdi side of the fw0 flow: Makefile, filelist.f
+├── Makefile                    # root delegator: firmware -> images -> snapshot -> compile -> run -> gate
 ├── tb/                         # self-checking testbenches (*.sv), one per regression
 ├── run/                        # VCS filelists (*.f), flow scripts (*.csh),
-│                               # Verdi signal groups (*.rc), tcl
+│                               # Verdi signal groups (*.rc), tcl; run/fw_wave.rc = fw0 waves
 ├── scripts/                    # generators (axi_interconnect_wrap.py, p2_prog_gen.py)
 ├── aes/                        # OpenCores/asics.ws AES-128 core (vendored)
 ├── axi-lite_uart-ipcore-develop/  # original UART drop-in (git-ignored; sources
@@ -607,8 +614,9 @@ verdi -ssf <wave.fsdb> -dbdir simv.daidir -sswr run/<name>_wave.rc &
 | `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md` | Cross-toolchain install/validation |
 | `doc/RISC_V_SW_Build_and_Simulation_Image_Architecture_Specification.md` | Frozen firmware build → simulation image flow |
 | `doc/SW_HW_Memory_Image_Architecture_First_Principles_and_Spec_Amendments.md` | Image-conversion first principles + amendments H.1–H.9 |
-| `doc/Firmware_Build_and_AHB_RW_Verification_Plan.md` | Execution plan — C firmware → Makefile → hex → AHB R/W in Verdi (Steps 1–2 **done**) |
+| `doc/Firmware_Build_and_AHB_RW_Verification_Plan.md` | Execution plan — C firmware → Makefile → hex → AHB R/W in Verdi (Steps 1–3a **done**) |
 | `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` | fw0 C toolchain: build output, gates G1–G13, two image defects found |
+| `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` | fw0 Step 3a evidence: both terminal tokens, cycle-by-cycle AHB read/write tables from the FSDB, the `ahb_interconnect` address-phase-hold dependency, findings N8–N10 |
 | `doc/screenshots/` | Verdi captures |
 
 ---
@@ -660,19 +668,23 @@ git check-ignore rtl/uart/uart_axi_slave.v tb/tb_uart_axi_slave.sv; echo $?     
 git fetch && git rev-list --left-right --count origin/main...HEAD                 # 0  0
 
 # 4. Tracker numbers still match §4.1
-git rev-list --count HEAD          # 22
-git ls-files | wc -l               # 112
-git archive HEAD | tar -xO | wc -l # 41332
+git rev-list --count HEAD          # 25
+git ls-files | wc -l               # 119
+git archive HEAD | tar -xO | wc -l # 44503
 
 # 5. Every path referenced above exists
-for p in rtl/soc_top.sv rtl/ahb rtl/aes rtl/uart rtl/interconnects scripts doc sw \
-         run/p1_full_flow.csh run/p2_full_flow.csh run/uart_full_flow.csh \
-         run/p3_uart_flow.csh run/aes_axi_interconnect_run.f run/aes_axi_2master_run.f \
+for p in rtl/soc_top.sv rtl/ahb rtl/aes rtl/uart rtl/interconnects scripts doc sw sim \
+         Makefile run/p1_full_flow.csh run/p2_full_flow.csh run/uart_full_flow.csh \
+         run/p3_uart_flow.csh run/fw_wave.rc run/aes_axi_interconnect_run.f run/aes_axi_2master_run.f \
+         tb/tb_ahb_cycle_monitor.sv sim/Makefile sim/filelist.f \
          doc/RISC_V_Network_Telemetry_SoC_Architecture_Document_v3.md \
          doc/Phase1_VeeR_Bringup_Completion_Record.md \
          doc/Phase2_AHB_Fabric_Completion_Record.md \
          doc/Phase3_UART_End_To_End_Completion_Record.md \
          doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md \
+         doc/Fw0_C_Toolchain_Build_and_Gate_Record.md \
+         doc/Firmware_Build_and_AHB_RW_Verification_Plan.md \
+         doc/Firmware_Build_and_AHB_RW_Verification_Record.md \
          core/Cores-VeeR-EL2/configs/veer.config; do
   [ -e "$p" ] || echo "MISSING: $p"
 done
@@ -681,10 +693,16 @@ done
 csh -fc 'source /home/student/cshrc; cd run; ./p1_full_flow.csh; echo EXIT=$status'
 csh -fc 'source /home/student/cshrc; cd run; ./p2_full_flow.csh; echo EXIT=$status'
 csh -fc 'source /home/student/cshrc; cd run; ./p3_uart_flow.csh; echo EXIT=$status'
+make sim          # fw0: gates on P2_TB2_RESULT + AHB_RW_MONITOR + G13
 ```
+
+# 7. fw0 firmware builds and both sim tokens gate
+make -C sw all inspect   # gates G1-G13
+make sim                 # [SIM] PASS P2_TB2_RESULT / AHB_RW_MONITOR / G13
 
 Last run: 2026-09-26 — Phase 1 `TEST_PASSED` (minstret=330), Phase 2
 `TB1 PASS + TB2 PASS`, AES interconnect `INTEGRATION: PASS`, AES 2-master
 `19 PASS / 0 FAIL`, UART direct/interconnect/2-master all PASS (15:18),
 Phase 3 UART end-to-end `UART_E2E_RESULT: PASS` + fabric TB1 `PASS=23 FAIL=0`
-(17:42), exit 0.
+(17:42), fw0 `P2_TB2_RESULT: PASS` + `AHB_RW_MONITOR: PASS` + G13 (18:10),
+exit 0.
