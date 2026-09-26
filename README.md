@@ -11,7 +11,7 @@ and reports it over UART — all driven by a VeeR EL2 RISC-V core.**
 ![top language](https://img.shields.io/github/languages/top/Abdul99Aleem/honours_project)
 ![repo size](https://img.shields.io/github/repo-size/Abdul99Aleem/honours_project)
 
-- **Repo:** <https://github.com/Abdul99Aleem/honours_project> (`main`)
+- **Repo:** <https://github.com/Abdul99Aleem/honours_project> (`main`; built on `feature/sw-build-ahb-rw`)
 - **Toolchain:** Synopsys VCS U-2023.03 + Verdi U-2023.03-SP1 (FSDB), bare-metal RISC-V GCC
 - **Built and verified in:** RTL simulation + bare-metal C (FPGA/silicon later)
 - **Verification methodology:** directed self-checking SystemVerilog today →
@@ -140,7 +140,7 @@ the manual record.
 
 | Metric | Value |
 |---|---|
-| Commits on `main` | **18** |
+| Commits so far (`git rev-list --count HEAD`) | **19** |
 | Active window | **28 days** — 2026-08-29 → 2026-09-26 |
 | Developers | **1** (two git identities: lab account + GitHub) |
 | Tracked files | **111** |
@@ -159,7 +159,7 @@ Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
 
 ```bash
-git rev-list --count HEAD                                    # 18 commits
+git rev-list --count HEAD                                    # 19 commits
 git log --reverse --format=%ad --date=short | head -1        # first commit
 git ls-files | wc -l                                         # 111 tracked files
 git archive HEAD | tar -xO | wc -l                           # 40939 committed lines
@@ -635,7 +635,7 @@ git check-ignore rtl/uart/uart_axi_slave.v tb/tb_uart_axi_slave.sv; echo $?     
 git fetch && git rev-list --left-right --count origin/main...HEAD                 # 0  0
 
 # 4. Tracker numbers still match §4.1
-git rev-list --count HEAD          # 18
+git rev-list --count HEAD          # 19
 git ls-files | wc -l               # 111
 git archive HEAD | tar -xO | wc -l # 40939
 
