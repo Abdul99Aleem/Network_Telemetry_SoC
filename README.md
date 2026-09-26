@@ -150,10 +150,10 @@ the manual record.
 | → Flow (`run/`) | 1,419 lines / 26 files (11 filelists, 7 `csh` flows, Verdi RCs) |
 | → Firmware (`sw/`) | 788 lines / 6 files |
 | → Scripts (`scripts/`) | 590 lines / 3 generators |
-| → Documentation (`doc/`) | 19,603 lines / 16 documents |
+| → Documentation (`doc/`) | 19,815 lines / 17 documents |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
-| Regression groups passing | **5** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated) |
-| Regression groups in progress | **1** (Phase 3 UART end-to-end on the SoC) |
+| Regression groups passing | **6** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end) |
+| Regression groups in progress | **0** |
 
 Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
@@ -180,7 +180,7 @@ git shortlog -sn --all                                       # contributors
 | — | AXI 2x8 interconnect + AES-128, isolated | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` — re-run 2026-09-26 |
 | — | UART AXI subsystem, isolated (direct / interconnect / 2-master) | **PASS** | `UART AXI SLAVE DIRECT: PASS`, `AXI INTERCONNECT -> UART INTEGRATION: PASS`, 2-master 19/0 — run 2026-09-26 15:18 |
 | — | RISC-V GNU toolchain bring-up | **PASS** | `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md` |
-| M3 | UART on the SoC: AHB→AXI bridge at `0x1000_0000` + E2E testbench | **IN PROGRESS** | fabric TB1 incl. bridge T11/T12: `P2_TB1_RESULT: PASS`; E2E run received all 5 serial bytes on `uart_tx`, CPU-side DMEM completion still open |
+| M3 | UART on the SoC: AHB→AXI bridge at `0x1000_0000` + E2E testbench | **PASS** | `doc/Phase3_UART_End_To_End_Completion_Record.md` — `UART_E2E_RESULT: PASS` (`55 41 52 54 0a` + `DMEM[2]=ff` + `DMEM[4..7]=60 00 00 00`) and fabric TB1 `23/23` → `P2_TB1_RESULT: PASS`, run 2026-09-26 17:42 |
 | M4 | AES on the SoC (bridge + driver) | **NOT STARTED** | |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |
@@ -200,7 +200,7 @@ same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 - [x] RISC-V cross-toolchain installed and validated
 - [x] UART AXI slave read handshake fixed; all three UART benches now pass (direct, interconnect, 2-master 19/0) with watchdogs instead of silent stalls
 - [x] AHB↔AXI bridge + UART attached to `soc_top` at `0x1000_0000`, fabric TB1 extended with bridge T11/T12 (PASS)
-- [ ] UART end-to-end run completing: serial path works (5/5 bytes received), CPU-side DMEM completion still open
+- [x] UART end-to-end run completing: `UART_E2E_RESULT: PASS` — 5/5 serial bytes, DMEM terminator, LSR read-back through the bridge, zero exceptions (`doc/Phase3_UART_End_To_End_Completion_Record.md`)
 - [ ] UVM base environment: `uvm_component_utils`-registered components, virtual interfaces handed around with `uvm_config_db`, one `run_test()` entry point
 - [ ] UVM factory overrides so the same env runs directed / random / constrained-random tests without editing the environment
 - [ ] UVM agents + scoreboards + functional coverage for AXI, AHB-Lite and UART
@@ -279,34 +279,44 @@ section is the plan I'll move into that table one IP at a time.
 
 Some notes on the current state and what I'm taking on next.
 
-1. **The UART end-to-end run is the open debug.** All three isolated UART
-   benches pass now (direct slave, interconnect, 2-master 19/0). On the full
-   path — VeeR → AHB → bridge → UART → `uart_tx` — the serial side is already
-   right: 5/5 bytes received. The run still ends
-   `UART_E2E_RESULT: TIMEOUT FAIL (rx_count=5 dmem_done=0)`, i.e. the
-   program's DMEM completion terminator never lands. That's what I'm chasing.
+1. **Phase 3 is closed: the UART end-to-end run passes.** VeeR boots through
+   the 4-slave fabric, writes THR, polls LSR, transmits `UART\n` on `uart_tx`
+   (5/5 bytes, 8690 ns bit period) and stores the LSR read-back plus the `0xFF`
+   terminator in DMEM — with **zero** exceptions. It took three real bugs to
+   get there, all recorded in
+   [`doc/Phase3_UART_End_To_End_Completion_Record.md`](doc/Phase3_UART_End_To_End_Completion_Record.md):
+   the AHB→AXI bridge returned only one half of VeeR's 64-bit AHB read (the
+   TEMT poll never terminated), the fabric arbiter dropped the IFU's address
+   phase whenever the LSU was active (24,719 illegal-instruction traps), and
+   the vendored UART IP held its TX FIFO in soft-reset from power-on (every
+   frame carried the first byte). Fabric TB1 grew `T13`/`T14` to lock both
+   protocol fixes down — now 23/23.
 2. **UART is on the bus; the rest of the peripherals aren't.** `soc_top` now
    carries the VeeR wrapper, the AHB fabric, IMEM, DMEM, the default ERROR
    slave and — new — the AHB→AXI bridge with the UART at `0x1000_0000`.
    Timer, GPIO, Network Telemetry, AES and CRC32 still decode to the default
    slave, so M4 onwards reuses that same bridge pattern.
-3. **The AES record needs a rewrite.**
+3. **The UART register map deviates from arch doc §10.1** and needs an
+   amendment: the IP uses `0x00` THR/RBR, `0x04` IER, `0x08` baud (DLAB=1),
+   `0x0C` LCR, `0x14` LSR. We keep the IP-native map rather than fork the
+   vendored core — §10.1 should be rewritten to match.
+4. **The AES record needs a rewrite.**
    `doc/AES_AXI_Integration_Verification_Record.md` still carries the 05-Sep
    status table where `AES core completion`, `STATUS.DONE` and
    `BUSY deassertion` were failing. Those were fixed afterwards and the
    regression runs 19 PASS / 0 FAIL with the ciphertext included — I'll update
    that table so it matches the log.
-4. **Everything so far is simulation.** No synthesis, no FPGA, no PPA numbers
+5. **Everything so far is simulation.** No synthesis, no FPGA, no PPA numbers
    yet — Phase 8 in the plan, and it stays last until simulation is stable.
-5. **A few flows still carry hard-coded absolute paths** (`/home/student/...`,
+6. **A few flows still carry hard-coded absolute paths** (`/home/student/...`,
    `/tmp/opencode/veer_p2`): the P1/P2 scripts and filelists. The `run/uart_*`
    filelists use relative paths and relocate cleanly. Details in
    [§10](#10-hard-coded-paths).
-6. **Single-author project.** CI and a top-level `LICENSE` are both on the list;
+7. **Single-author project.** CI and a top-level `LICENSE` are both on the list;
    the vendored cores keep their own licences in the meantime.
-7. **CRC32 and the Network Telemetry Engine are specified but not written yet.**
+8. **CRC32 and the Network Telemetry Engine are specified but not written yet.**
    They exist in the architecture document and the memory map — next RTL to land.
-8. **The testbenches are still directed SystemVerilog.** The UVM environment in
+9. **The testbenches are still directed SystemVerilog.** The UVM environment in
    [§5](#5-verification-methodology-directed-today-uvm-next) — factory-registered
    components, `uvm_config_db` for virtual interfaces, scoreboards, coverage —
    is the next step for verification.
@@ -545,7 +555,7 @@ Expected (run 2026-09-26 15:18): `UART AXI SLAVE DIRECT: PASS`,
 took this from a silent stall to a passing run. Waveform configs:
 `uart_wave.rc`, `uart_axi_slave_wave.rc`, `uart_2master_wave.rc`.
 
-### Phase 3 — UART on the SoC (IN PROGRESS)
+### Phase 3 — UART on the SoC (PASS)
 
 ```csh
 cd ~/Documents/honours_project/run
@@ -558,11 +568,21 @@ miniature: VeeR → AHB fabric → `ahb_to_axi_bridge` → `uart_axi_slave` →
 period from the first byte, then checks `UART\n` on the wire, the DMEM
 completion terminator and the LSR value read back through the bridge.
 
-Last run (2026-09-26 15:56): all 5 serial bytes arrived, but
-`UART_E2E_RESULT: TIMEOUT FAIL (rx_count=5 dmem_done=0)` — the program's DMEM
-completion flag never lands, so the bench times out. The fabric side of the
-same flow passes: `P2_TB1_RESULT: PASS`, including the new bridge checks
-`T11` (LSR read) and `T12` (THR write then LSR read, `HRESP=0`).
+Last run (2026-09-26 17:42), exit 0:
+
+```
+UART MONITOR: calibrated bit period = 8690000 ns (869 clk)
+ UART RX[0..4] = 0x55 0x41 0x52 0x54 0x0a   ("UART\n")
+ DMEM[2]      : 0xff (expect FF)
+ DMEM[4..7]   : 60 00 00 00 (LSR via bridge, expect 60 00 00 00)
+ uart_irq     : 0 (expect 0, TX-only)
+ UART_E2E_RESULT: PASS (VeeR -> AHB -> AXI -> UART -> uart_tx)
+P2 FABRIC: PASS=23 FAIL=0
+P2_TB1_RESULT: PASS
+```
+
+`grep -c "EXC cause=" sim_uart_e2e.log` is 0 — no traps at all.
+Full record: [`doc/Phase3_UART_End_To_End_Completion_Record.md`](doc/Phase3_UART_End_To_End_Completion_Record.md).
 
 ### Verdi
 
@@ -582,6 +602,7 @@ verdi -ssf <wave.fsdb> -dbdir simv.daidir -sswr run/<name>_wave.rc &
 | `doc/RISC_V_Network_Telemetry_SoC_Progress_and_Architecture.md` | Progress + AXI/AES baseline |
 | `doc/Phase1_VeeR_Bringup_Completion_Record.md` | Phase 1 evidence |
 | `doc/Phase2_AHB_Fabric_Completion_Record.md` | Phase 2 evidence |
+| `doc/Phase3_UART_End_To_End_Completion_Record.md` | Phase 3 evidence: VeeR → AHB → AXI → UART → `uart_tx`, plus the three root causes fixed (bridge 64-bit split, fabric arbiter, UART IP TX FIFO reset) |
 | `doc/AES_AXI_Integration_Verification_Record.md` | AES/AXI subsystem evidence (status table update pending — §6.3) |
 | `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md` | Cross-toolchain install/validation |
 | `doc/RISC_V_SW_Build_and_Simulation_Image_Architecture_Specification.md` | Frozen firmware build → simulation image flow |
@@ -650,6 +671,7 @@ for p in rtl/soc_top.sv rtl/ahb rtl/aes rtl/uart rtl/interconnects scripts doc s
          doc/RISC_V_Network_Telemetry_SoC_Architecture_Document_v3.md \
          doc/Phase1_VeeR_Bringup_Completion_Record.md \
          doc/Phase2_AHB_Fabric_Completion_Record.md \
+         doc/Phase3_UART_End_To_End_Completion_Record.md \
          doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md \
          core/Cores-VeeR-EL2/configs/veer.config; do
   [ -e "$p" ] || echo "MISSING: $p"
@@ -658,10 +680,11 @@ done
 # 6. Regressions actually pass (needs Synopsys env)
 csh -fc 'source /home/student/cshrc; cd run; ./p1_full_flow.csh; echo EXIT=$status'
 csh -fc 'source /home/student/cshrc; cd run; ./p2_full_flow.csh; echo EXIT=$status'
+csh -fc 'source /home/student/cshrc; cd run; ./p3_uart_flow.csh; echo EXIT=$status'
 ```
 
 Last run: 2026-09-26 — Phase 1 `TEST_PASSED` (minstret=330), Phase 2
 `TB1 PASS + TB2 PASS`, AES interconnect `INTEGRATION: PASS`, AES 2-master
 `19 PASS / 0 FAIL`, UART direct/interconnect/2-master all PASS (15:18),
-fabric TB1 incl. bridge T11/T12 `PASS` (15:47), UART end-to-end
-`TIMEOUT FAIL (rx_count=5 dmem_done=0)` (15:56) — open.
+Phase 3 UART end-to-end `UART_E2E_RESULT: PASS` + fabric TB1 `PASS=23 FAIL=0`
+(17:42), exit 0.

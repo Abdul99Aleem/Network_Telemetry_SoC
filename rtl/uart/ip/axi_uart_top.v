@@ -398,7 +398,11 @@ module axi_uart_top (/*AUTOARG*/
         axi_bvalid_d            = 1'b0;
         axi_bresp_d             = 2'b0;
         axi_bid_d               = {AXI_ID_WIDTH{1'b0}};
-        tx_fifo_reset_int_d     = 1'b1;
+        // Leave TX FIFO soft-reset immediately after hardware reset.
+        // Holding it until AckWriteState discarded a first-write THR push
+        // (axi_internal_fifo drops push_i while rst_i=1), silently losing
+        // the first transmitted byte. arstn_i already clears the FIFO.
+        tx_fifo_reset_int_d     = 1'b0;
         tx_fifo_push_int_d      = 1'b0;
         tx_fifo_data_in_int_d   = {DATA_WIDTH_UART{1'b0}};
         uart_baudrate_div_int_d = UART_BAUDRATE_DIV_INIT[AXI_DIV_WIDTH-1:0];

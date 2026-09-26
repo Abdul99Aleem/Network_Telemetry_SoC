@@ -4,7 +4,9 @@
 // Desc   : Directed verification of soc_top AHB-Lite fabric:
 //          reset, single read/write, decode, slave select, HREADY/HRESP
 //          propagation, unmapped ERROR, back-to-back, arbitration,
-//          read-after-write, byte/half lanes.
+//          read-after-write, byte/half lanes, UART decode + AHB->AXI
+//          bridge read/write (T11/T12), 64-bit split UART read (T13),
+//          cross-master HREADY stalling (T14).
 //
 // DUT    : soc_top (fabric + IMEM + DMEM + default slave)
 // Clocks : 100 MHz single clock, active-low reset.
@@ -299,6 +301,61 @@ module tb_ahb_fabric;
         lsu_read(32'h1000_0014, 3'b010, rd, rp);
         check("T12 UART THR write then LSR read, HRESP=0", (rp === 1'b0));
         check("T12 LSR after THR write still THRE+TEMT", (rd[38:37] === 2'b11));
+
+        // ---- T13: 64-bit (hsize=3) UART read ----
+        // VeeR issues non-side-effect accesses as full 64-bit transfers
+        // aligned down to an 8-byte boundary, so a `lw` of LSR @ 0x14
+        // arrives as haddr=0x1000_0010 / hsize=3.  The bridge must split
+        // it into two 32-bit AXI reads and place the LSR in HRDATA[63:32].
+        repeat (2) @(posedge clk); #1;
+        lsu_read(32'h1000_0010, 3'b011, rd, rp);
+        check("T13 64-bit UART read HRESP=0", (rp === 1'b0));
+        check("T13 64-bit UART read lanes (LSR in HRDATA[63:32])",
+              (rd[63:32] === 32'h0000_0060) && (rd[31:0] === 32'h0000_0000));
+
+        // ---- T14: IFU address phase held while LSU owns a slow data phase ----
+        // Regression for the fabric arbiter.  HREADY is also the "my address
+        // phase was accepted" signal, so a master that is not granted must
+        // see HREADY=0 while the shared data phase belongs to the other
+        // master — otherwise its address phase is muxed away and silently
+        // dropped (this is what corrupted VeeR's instruction fetches).
+        begin : t14
+            reg [63:0] t14_rd;
+            reg        t14_seen;
+            reg        t14_held;
+
+            t14_seen = 1'b0;
+            t14_held = 1'b0;
+            repeat (3) @(posedge clk); #1;      // let data_sel drain to idle
+
+            // LSU: one UART address phase, then go IDLE (VeeR-style)
+            lsu_haddr <= 32'h1000_0014; lsu_hwrite <= 1'b0;
+            lsu_htrans <= HTRANS_NONSEQ; lsu_hsize <= 3'b010; lsu_hburst <= 3'b0;
+            @(posedge clk); #1;                 // UART address phase accepted
+            lsu_htrans <= HTRANS_IDLE; lsu_hwrite <= 1'b0;
+
+            // IFU: request IMEM while the UART data phase is outstanding
+            ifu_haddr <= 32'h0000_0100; ifu_hwrite <= 1'b0;
+            ifu_htrans <= HTRANS_NONSEQ; ifu_hsize <= 3'b011; ifu_hburst <= 3'b0;
+
+            while (dut.u_fabric.data_sel == 3'b011) begin
+                @(posedge clk); #1;
+                if (ifu_htrans != HTRANS_IDLE) begin
+                    t14_seen = 1'b1;
+                    if (ifu_hready === 1'b0) t14_held = 1'b1;
+                end
+            end
+            check("T14 IFU address phase held during UART data phase",
+                  t14_seen && t14_held);
+
+            while (ifu_hready !== 1'b1) begin @(posedge clk); #1; end
+            t14_rd = ifu_hrdata;
+            ifu_htrans <= HTRANS_IDLE;
+            lsu_htrans <= HTRANS_IDLE;
+            @(posedge clk); #1;
+            check("T14 IFU fetch after stall returns IMEM data",
+                  t14_rd === 64'h11223344_55667788);
+        end
 
         // ---- summary ----
         $display("==================================================");

@@ -25,6 +25,13 @@ OFF_THR, OFF_LSR = 0x00, 0x14
 LSR_THRE, LSR_TEMT = 0x20, 0x40
 PAYLOAD = [ord(c) for c in "UART"] + [0x0A]
 
+# VeeR memory-region control.  MRAC packs {side_effect, cacheable} pairs;
+# csr_idx = {addr[31:28], 1'b1}, so the UART region (0x1xxx_xxxx) is MRAC[3].
+# side_effect=1 forces every LSU load of LSR to reach the bus instead of
+# being forwarded from the load buffer (el2_lsu_bus_buffer obuf_nosend).
+MRAC = 0x7C0
+MRAC_UART_SIDE_EFFECT = 1 << 3   # 0x0000_0008
+
 
 # ------------------------------- encoders ----------------------------------
 def lui(rd, imm20):
@@ -44,6 +51,12 @@ def addi(rd, rs1, imm12):
 
 def andi(rd, rs1, imm12):
     return itype(imm12, rs1, 0b111, rd, 0x13)
+
+
+def csrw(csr, rs1):
+    """csrw csr, rs1  ==  csrrw x0, csr, rs1."""
+    assert 0 <= csr < (1 << 12)
+    return itype(csr, rs1, 0b001, 0, 0x73)
 
 
 def stype(imm12, rs2, rs1, funct3, opcode):
@@ -92,8 +105,12 @@ def jal(rd, imm):
 
 # ------------------------------ program ------------------------------------
 prog = [
-    lui(S0, UART_BASE_HI),        # 0x00: s0 = 0x1000_0000 UART
-    lui(S1, DMEM_BASE_HI),        # 0x04: s1 = 0x0001_0000 DMEM
+    lui(S0, UART_BASE_HI),        # s0 = 0x1000_0000 UART
+    lui(S1, DMEM_BASE_HI),        # s1 = 0x0001_0000 DMEM
+    # MRAC has no hardware reset; write it explicitly and mark the UART
+    # region side-effect so LSR polls are never load-buffer forwarded.
+    addi(T0, X0, MRAC_UART_SIDE_EFFECT),
+    csrw(MRAC, T0),
 ]
 loop_heads = []
 

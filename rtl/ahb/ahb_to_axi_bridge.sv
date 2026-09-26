@@ -17,6 +17,16 @@
 //            WSTRB is derived from HSIZE + HADDR[2:0] byte lanes, exactly
 //            like ahb_sram, so sb/sh/sw all map onto the right AXI strobes.
 //
+//            HSIZE==3 (64-bit beat) is split into TWO back-to-back 32-bit
+//            AXI accesses at HADDR and HADDR+4, then merged:
+//              read  -> hrdata = {word(HADDR+4), word(HADDR)}
+//              write -> WDATA[31:0]/WSTRB[3:0] first, then [63:32]/[7:4]
+//            VeeR EL2 marks MMIO regions as non-side-effect in MRAC by
+//            default, so its load unit issues a full 64-bit read aligned
+//            down to the 8-byte boundary and selects the sub-word itself.
+//            The bridge must therefore always be able to return BOTH
+//            32-bit halves of a 64-bit AHB read.
+//
 // Protocol  :
 //  - Address phase is accepted whenever HREADYOUT is high (S_IDLE, or the
 //    second cycle of an AHB ERROR response).
@@ -120,8 +130,20 @@ module ahb_to_axi_bridge #(
     reg             write_q;
     reg [31:0]      wdata_q;
     reg [3:0]       wstrb_q;
+    reg [31:0]      wdata_alt_q;
+    reg [3:0]       wstrb_alt_q;
     reg [31:0]      rdata_q;
+    reg [31:0]      rdata_hi_q;
+    reg             rd_second_q;
+    reg             wr_second_q;
     reg             awvalid_q, wvalid_q, bready_q, arvalid_q, rready_q;
+
+    // A 64-bit AHB beat is carried out as two 32-bit AXI accesses.
+    wire        wide64   = (size_q == 3'b011);
+    wire [31:0] aw_addr  = a_q + (wr_second_q ? 32'd4 : 32'd0);
+    wire [31:0] ar_addr  = a_q + (rd_second_q ? 32'd4 : 32'd0);
+    // AXI SIZE never exceeds 2 (32-bit) on the 32-bit AXI port.
+    wire [2:0]  axi_size = wide64 ? 3'b010 : size_q;
 
     // ---------------------------------------------------------------
     // AHB byte lanes for a 64-bit bus (same encoding as ahb_sram).
@@ -149,8 +171,10 @@ module ahb_to_axi_bridge #(
     assign hresp     = (state == S_ERR1) || (state == S_ERR2);
 
     // 32-bit AXI read data is placed back in the lane it came from.
-    assign hrdata = lane_hi ? {rdata_q, 32'h0000_0000}
-                            : {32'h0000_0000, rdata_q};
+    // A 64-bit beat returns both halves, low word first.
+    assign hrdata = wide64    ? {rdata_hi_q, rdata_q}
+                  : lane_hi   ? {rdata_q, 32'h0000_0000}
+                              : {32'h0000_0000, rdata_q};
 
     wire accept = hreadyout && hsel && (htrans != HTRANS_IDLE);
 
@@ -158,9 +182,9 @@ module ahb_to_axi_bridge #(
     // AXI master outputs
     // ---------------------------------------------------------------
     assign m_axi_awid    = {ID_WIDTH{1'b0}};
-    assign m_axi_awaddr  = a_q;
+    assign m_axi_awaddr  = aw_addr;
     assign m_axi_awlen   = 8'h00;
-    assign m_axi_awsize  = size_q;
+    assign m_axi_awsize  = axi_size;
     assign m_axi_awburst = 2'b01; // INCR
     assign m_axi_awlock  = 1'b0;
     assign m_axi_awcache = 4'b0000;
@@ -178,9 +202,9 @@ module ahb_to_axi_bridge #(
     assign m_axi_bready  = bready_q;
 
     assign m_axi_arid    = {ID_WIDTH{1'b0}};
-    assign m_axi_araddr  = a_q;
+    assign m_axi_araddr  = ar_addr;
     assign m_axi_arlen   = 8'h00;
-    assign m_axi_arsize  = size_q;
+    assign m_axi_arsize  = axi_size;
     assign m_axi_arburst = 2'b01;
     assign m_axi_arlock  = 1'b0;
     assign m_axi_arcache = 4'b0000;
@@ -202,7 +226,12 @@ module ahb_to_axi_bridge #(
             write_q   <= 1'b0;
             wdata_q   <= 32'h0;
             wstrb_q   <= 4'h0;
+            wdata_alt_q <= 32'h0;
+            wstrb_alt_q <= 4'h0;
             rdata_q   <= 32'h0;
+            rdata_hi_q <= 32'h0;
+            rd_second_q <= 1'b0;
+            wr_second_q <= 1'b0;
             awvalid_q <= 1'b0;
             wvalid_q  <= 1'b0;
             bready_q  <= 1'b0;
@@ -226,13 +255,19 @@ module ahb_to_axi_bridge #(
                 // lanes_now already picks the right half of the 64-bit
                 // bus, so WSTRB is simply that half.
                 S_LAUNCH: begin
-                    wdata_q <= lane_hi ? hwdata[63:32] : hwdata[31:0];
-                    wstrb_q <= lane_hi ? lanes_now[7:4] : lanes_now[3:0];
+                    wdata_q     <= lane_hi ? hwdata[63:32] : hwdata[31:0];
+                    wstrb_q     <= lane_hi ? lanes_now[7:4] : lanes_now[3:0];
+                    wdata_alt_q <= lane_hi ? hwdata[31:0]  : hwdata[63:32];
+                    wstrb_alt_q <= lane_hi ? lanes_now[3:0] : lanes_now[7:4];
+                    rdata_q     <= 32'h0;
+                    rdata_hi_q  <= 32'h0;
                     if (write_q) begin
+                        wr_second_q <= 1'b0;
                         awvalid_q <= 1'b1;
                         wvalid_q  <= 1'b1;
                         state     <= S_WR;
                     end else begin
+                        rd_second_q <= 1'b0;
                         arvalid_q <= 1'b1;
                         state     <= S_RD;
                     end
@@ -252,7 +287,19 @@ module ahb_to_axi_bridge #(
                 S_WR_B: begin
                     if (bready_q && m_axi_bvalid) begin
                         bready_q <= 1'b0;
-                        state    <= (m_axi_bresp == 2'b00) ? S_IDLE : S_ERR1;
+                        if (m_axi_bresp != 2'b00) begin
+                            state <= S_ERR1;
+                        end else if (wide64 && !wr_second_q) begin
+                            // second half of a 64-bit AHB write
+                            wr_second_q <= 1'b1;
+                            wdata_q     <= wdata_alt_q;
+                            wstrb_q     <= wstrb_alt_q;
+                            awvalid_q   <= 1'b1;
+                            wvalid_q    <= 1'b1;
+                            state       <= S_WR;
+                        end else begin
+                            state <= S_IDLE;
+                        end
                     end
                 end
 
@@ -268,8 +315,19 @@ module ahb_to_axi_bridge #(
                 S_RD_R: begin
                     if (rready_q && m_axi_rvalid) begin
                         rready_q <= 1'b0;
-                        rdata_q  <= m_axi_rdata;
-                        state    <= (m_axi_rresp == 2'b00) ? S_IDLE : S_ERR1;
+                        if (m_axi_rresp != 2'b00) begin
+                            state <= S_ERR1;
+                        end else if (wide64 && !rd_second_q) begin
+                            // first half of a 64-bit AHB read captured
+                            rdata_q     <= m_axi_rdata;
+                            rd_second_q <= 1'b1;
+                            arvalid_q   <= 1'b1;
+                            state       <= S_RD;
+                        end else begin
+                            if (wide64) rdata_hi_q <= m_axi_rdata;
+                            else        rdata_q    <= m_axi_rdata;
+                            state <= S_IDLE;
+                        end
                     end
                 end
 

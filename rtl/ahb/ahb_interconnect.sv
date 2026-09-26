@@ -11,9 +11,13 @@
 //   UART  0x1000_0000 - 0x1000_0FFF  (4 KB, via ahb_to_axi_bridge)
 //
 // Protocol notes:
-// - Address-phase arbitration (combinational on HTRANS), data-phase
-//   ownership follows the registered address-phase owner.
-// - The idle (non-owner) master sees HREADY=1/HRESP=0/HRDATA=0.
+// - Address-phase grant (see Address-phase arbitration below). The data
+//   phase always belongs to the master whose address phase was accepted
+//   in the previous cycle; it follows the registered owner.
+// - A master that does not own the data phase and has not been granted
+//   the address phase sees HREADY=0 (its address phase is held).
+// - The non-owner sees HRESP=0; only the data-phase owner sees the
+//   slave's HRESP/HRDATA.
 // - Exactly one HSEL is asserted per NONSEQ/SEQ transfer.
 // ============================================================================
 `timescale 1ns / 1ps
@@ -113,11 +117,37 @@ module ahb_interconnect #(
     localparam [1:0] HTRANS_SEQ    = 2'b11;
 
     // ----------------------------------------------------------------
-    // Address-phase arbitration: LSU wins over IFU (fixed priority).
-    // addr_is_lsu = 1 -> LSU owns the address phase.
+    // Data-phase ownership state (registered; see "Data-phase ownership").
+    // ----------------------------------------------------------------
+    reg        data_is_lsu;
+    reg [2:0]  data_sel;
+
+    // ----------------------------------------------------------------
+    // Address-phase arbitration.
+    //
+    // HREADY doubles as "my address phase was accepted", so the master
+    // that owns the current slave data phase must be granted whenever it
+    // is issuing a new address phase.  Otherwise it would sample
+    // HREADY=1 (its data phase completing) while its address phase had
+    // been muxed to the other master and silently dropped.
+    // When the data-phase owner is idle, the documented fixed priority
+    // applies (LSU over IFU, v3 arch §11.8).
+    //
+    //   addr_is_lsu = 1 -> LSU owns the address phase.
     // ----------------------------------------------------------------
     wire lsu_active = (lsu_htrans != HTRANS_IDLE);
-    wire addr_is_lsu = lsu_active;
+    wire ifu_active = (ifu_htrans != HTRANS_IDLE);
+
+    wire dp_valid  = (data_sel != 3'b000);
+    wire dp_is_lsu = dp_valid &  data_is_lsu;
+    wire dp_is_ifu = dp_valid & ~data_is_lsu;
+
+    wire addr_is_lsu = (dp_is_lsu && lsu_active) ? 1'b1 :
+                       (dp_is_ifu && ifu_active) ? 1'b0 :
+                       lsu_active;
+
+    wire lsu_granted = lsu_active &&  addr_is_lsu;
+    wire ifu_granted = ifu_active && ~addr_is_lsu;
 
     wire [ADDR_WIDTH-1:0] mux_haddr     = addr_is_lsu ? lsu_haddr     : ifu_haddr;
     wire [2:0]            mux_hburst    = addr_is_lsu ? lsu_hburst    : ifu_hburst;
@@ -174,9 +204,6 @@ module ahb_interconnect #(
     // Encoding: 3'b000 none/idle, 3'b001 IMEM, 3'b010 DMEM,
     //           3'b011 UART,    3'b100 DEFAULT.
     // ----------------------------------------------------------------
-    reg        data_is_lsu;
-    reg [2:0]  data_sel;
-
     wire [2:0] addr_sel = sel_imem ? 3'b001 :
                           sel_dmem ? 3'b010 :
                           sel_uart ? 3'b011 :
@@ -209,14 +236,22 @@ module ahb_interconnect #(
 
     // ----------------------------------------------------------------
     // Response steering to masters.
+    //
+    // Only the data-phase owner sees the slave's HRDATA/HRESP.
+    // HREADY:
+    //   - data-phase owner or currently-granted address phase
+    //       -> slave HREADYOUT (data phase completion / address accepted)
+    //   - otherwise, master has an address phase pending but was not
+    //     granted -> 0 (address phase is held, not dropped)
+    //   - otherwise, master is idle with nothing pending -> 1
     // ----------------------------------------------------------------
-    assign ifu_hrdata = (!data_is_lsu) ? mux_hrdata : {DATA_WIDTH{1'b0}};
-    assign ifu_hready = (!data_is_lsu) ? mux_hreadyout : 1'b1;
-    assign ifu_hresp  = (!data_is_lsu) ? mux_hresp : 1'b0;
+    assign ifu_hrdata = dp_is_ifu ? mux_hrdata : {DATA_WIDTH{1'b0}};
+    assign ifu_hready = (ifu_granted || dp_is_ifu) ? mux_hreadyout : ~ifu_active;
+    assign ifu_hresp  = dp_is_ifu ? mux_hresp : 1'b0;
 
-    assign lsu_hrdata = (data_is_lsu) ? mux_hrdata : {DATA_WIDTH{1'b0}};
-    assign lsu_hready = (data_is_lsu) ? mux_hreadyout : 1'b1;
-    assign lsu_hresp  = (data_is_lsu) ? mux_hresp : 1'b0;
+    assign lsu_hrdata = dp_is_lsu ? mux_hrdata : {DATA_WIDTH{1'b0}};
+    assign lsu_hready = (lsu_granted || dp_is_lsu) ? mux_hreadyout : ~lsu_active;
+    assign lsu_hresp  = dp_is_lsu ? mux_hresp : 1'b0;
 
 endmodule
 

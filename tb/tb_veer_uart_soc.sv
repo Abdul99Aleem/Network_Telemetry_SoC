@@ -347,37 +347,20 @@ module tb_veer_uart_soc
         end
     end
 
-    // ================= debug traces (kept: cheap and useful) =================
-    integer edge_cnt = 0;
-    initial forever begin
-        @(uart_tx);
-        if (edge_cnt < 80) begin
-            $display("[%0t ps] uart_tx -> %b", $time, uart_tx);
-            edge_cnt = edge_cnt + 1;
-        end
-    end
-
-    initial $display("[%0t ps] uart_tx initial = %b", $time, uart_tx);
-
-    integer trc = 0;
+    // ================= failure diagnostics =================
+    // Exceptions are always reported; the timeout block dumps IMEM/DMEM.
     always @(posedge core_clk) begin
-        if (rst_l && (lsu_htrans != 2'b00) && trc < 40) begin
-            $display("[%0t ps] LSU  addr=%h size=%0d wr=%b trans=%b",
-                     $time, lsu_haddr, lsu_hsize, lsu_hwrite, lsu_htrans);
-            trc = trc + 1;
-        end
-        if (rst_l && u_soc.uart_hsel && u_soc.uart_htrans[1] && trc < 40) begin
-            $display("[%0t ps]   -> uart_hsel addr=%h size=%0d wr=%b",
-                     $time, u_soc.uart_haddr, u_soc.uart_hsize, u_soc.uart_hwrite);
-            trc = trc + 1;
-        end
+        if (rst_l && (trace_rv_i_exception_ip || trace_rv_i_interrupt_ip))
+            $display("[%0t ps] *** EXC cause=%0d int=%b addr=%h tval=%h",
+                     $time, trace_rv_i_ecause_ip, trace_rv_i_interrupt_ip,
+                     trace_rv_i_address_ip, trace_rv_i_tval_ip);
     end
 
     integer dmp;
     task automatic dump_imem_dmem;
         begin
-            $write("TIMEOUT dump IMEM[0..15] =");
-            for (dmp = 0; dmp < 16; dmp = dmp + 1)
+            $write("TIMEOUT dump IMEM[0..47] =");
+            for (dmp = 0; dmp < 48; dmp = dmp + 1)
                 $write(" %02h", u_soc.u_imem.mem[dmp]);
             $write("\nTIMEOUT dump DMEM[0..7]  =");
             for (dmp = 0; dmp < 8; dmp = dmp + 1)
