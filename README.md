@@ -16,7 +16,7 @@ and reports it over UART — all driven by a VeeR EL2 RISC-V core.**
 - **Built and verified in:** RTL simulation + bare-metal C (FPGA/silicon later)
 - **Verification methodology:** directed self-checking SystemVerilog today →
   layered **UVM** environment next (UVM factory overrides + `uvm_config_db`,
-  see [§5](#5-verification-methodology-directed-today-uvm-next))
+  see [§6](#6-verification-methodology-directed-today-uvm-next))
 - **README last re-verified against a live run:** 2026-09-26
 
 ---
@@ -75,7 +75,7 @@ this is what "finished" looks like:
   UART (TX) ──────────────── reports packet stats + CRC status + ciphertext
 ```
 
-That is the last row of the status table in §4.2. Everything in this repo so
+That is the last row of the status table in §5.2. Everything in this repo so
 far is the groundwork that makes that final demo defensible: a booted CPU, a
 working system bus, accelerators proven in isolation, and now the first
 peripheral wired onto the SoC through the bridge.
@@ -131,27 +131,89 @@ project — is what I'm building next.
 
 ---
 
-## 4. Project tracker
+## 4. Repository layout
 
-### 4.1 Numbers
+```text
+Network_Telemetry_SoC/
+├── README.md
+├── .gitignore                  # generated files only (see Git policy)
+├── .gitmodules                 # 1 submodule: core/Cores-VeeR-EL2
+├── core/
+│   └── Cores-VeeR-EL2/         # CPU submodule, LOCKED at 06ad26a (do not modify)
+├── rtl/
+│   ├── soc_top.sv              # SoC top: VeeR + AHB fabric + IMEM/DMEM + bridge/UART
+│   ├── ahb/                    # AHB-Lite interconnect, SRAM, default slave, AHB→AXI bridge
+│   ├── aes/                    # AES AXI slave wrapper + vendored AES IP (ip/)
+│   ├── uart/                   # UART AXI slave wrapper + vendored UART IP (ip/)
+│   └── interconnects/          # AXI 2x8 interconnect, arbiter, priority encoder
+├── sw/                         # bare-metal firmware: src/, include/, linker/, Makefile
+├── sim/                        # VCS/Verdi side of the fw0 flow: Makefile, filelist.f
+├── Makefile                    # root delegator: firmware -> images -> snapshot -> compile -> run -> gate
+├── tb/                         # self-checking testbenches (*.sv), one per regression
+├── run/                        # VCS filelists (*.f), flow scripts (*.csh),
+│                               # Verdi signal groups (*.rc), tcl; run/fw_wave.rc = fw0 waves
+├── scripts/                    # generators (axi_interconnect_wrap.py, p2_prog_gen.py)
+├── aes/                        # OpenCores/asics.ws AES-128 core (vendored)
+├── axi-lite_uart-ipcore-develop/  # original UART drop-in (git-ignored; sources
+│                               #   copied into rtl/uart/ip/)
+└── doc/                        # architecture docs, phase records, screenshots
+```
+
+Notes:
+
+- `rtl/` is what simulation compiles; `rtl/aes/ip/` holds the subset of the
+  AES core used by the interconnect regressions, while `aes/aes_core-master/`
+  is the full upstream core used by `run/aes_run.f`.
+- `aes/axi_aes_wrapper.v` is an older copy; the filelists use
+  `rtl/aes/axi_aes_wrapper.v`.
+- UART IP sources in `rtl/uart/ip/` were copied out of
+  `axi-lite_uart-ipcore-develop/` (third-party drop-in, git-ignored).
+
+### 4.1 `run/` — the flow layer
+
+Everything needed to build and run a regression that is *not* RTL or firmware
+lives here. `run/` is tracked by pattern (`.gitignore` whitelists
+`run/*.{f,csh,tcl,rc}`), so a new flow asset is committed without editing the
+ignore file.
+
+| Kind | Files | Purpose |
+|---|---|---|
+| **Flow scripts** (`*.csh`) | `p1_full_flow.csh`, `p2_full_flow.csh`, `uart_full_flow.csh`, `p3_uart_flow.csh` | one-command regressions: snapshot → compile → simulate → gate on the pass token |
+| | `p1_hello_world_ahb.csh`, `p1_open_verdi.csh`, `p2_open_verdi.csh` | standalone bring-up and Verdi launchers |
+| **VCS filelists** (`*.f`) | `p2_fabric_run.f`, `p2_veer_soc_run.f`, `p3_uart_soc_run.f` | Phase 2 / Phase 3 source lists |
+| | `aes_run.f`, `aes_axi_run.f`, `aes_axi_interconnect_run.f`, `aes_axi_2master_run.f` | AES isolated + interconnect regressions |
+| | `uart_axi_run.f`, `uart_axi_interconnect_run.f`, `uart_axi_2master_run.f`, `uart_rtl.f` | UART isolated + interconnect regressions; `uart_rtl.f` is also pulled in by `sim/filelist.f` |
+| **Verdi signal groups** (`*.rc`) | `p1_wave.rc`, `p2_wave.rc`, `p2_veer_wave.rc`, `fw_wave.rc`, `axi_wave.rc`, `uart_wave.rc`, `uart_axi_slave_wave.rc`, `uart_2master_wave.rc` | saved signal/bookmark sets loaded with `-sswr` |
+| **tcl** | `p1_verdi_ahb.tcl` | Verdi batch/scripting helper |
+
+`run/*.f` and `run/*.rc` are **inputs**; `simv`, `*.log`, `*.fsdb`, `csrc/`,
+`verdiLog/` and `novas.*` are dropped into `run/` by the tools and are ignored.
+Only `run/uart_*` filelists use relative `../rtl/...` paths and therefore
+relocate cleanly — see [§10](#10-hard-coded-paths).
+
+---
+
+## 5. Project tracker
+
+### 5.1 Numbers
 
 Snapshot as of **2026-09-26**. Badges above update themselves; this table is
 the manual record.
 
 | Metric | Value |
 |---|---|
-| Commits so far (`git rev-list --count HEAD`) | **25** |
+| Commits so far (`git rev-list --count HEAD`) | **26** |
 | Active window | **28 days** — 2026-08-29 → 2026-09-26 |
 | Developers | **1** (two git identities: lab account + GitHub) |
-| Tracked files | **119** |
-| Lines committed in `HEAD` (excl. CPU submodule) | **44,503** |
+| Tracked files | **124** |
+| Lines committed in `HEAD` (excl. CPU submodule) | **52,964** |
 | → RTL (`rtl/`) | 7,489 lines / 26 files |
 | → Testbenches (`tb/`) | 6,928 lines / 11 benches |
 | → Flow (`run/`) | 1,517 lines / 27 files (11 filelists, 7 `csh` flows, Verdi RCs) |
 | → Firmware (`sw/`) | 788 lines / 6 files |
 | → Simulation flow (`sim/`) | 177 lines / 2 files |
 | → Scripts (`scripts/`) | 607 lines / 3 generators |
-| → Documentation (`doc/`) | 22,394 lines / 19 documents |
+| → Documentation (`doc/`) | 30,855 lines / 24 documents (19 project + 5 group) |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
 | Regression groups passing | **6** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end) |
 | Regression groups in progress | **0** |
@@ -160,10 +222,10 @@ Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
 
 ```bash
-git rev-list --count HEAD                                    # 25 commits
+git rev-list --count HEAD                                    # 26 commits
 git log --reverse --format=%ad --date=short | head -1        # first commit
-git ls-files | wc -l                                         # 119 tracked files
-git archive HEAD | tar -xO | wc -l                           # 44503 committed lines
+git ls-files | wc -l                                         # 124 tracked files
+git archive HEAD | tar -xO | wc -l                           # 52964 committed lines
 for d in rtl tb run scripts doc sw sim; do                   # per-directory
   printf '%-8s %6d %3d files\n' "$d" \
     "$(git archive HEAD $d | tar -xO | wc -l)" \
@@ -172,7 +234,7 @@ done
 git shortlog -sn --all                                       # contributors
 ```
 
-### 4.2 Phase status
+### 5.2 Phase status
 
 | Milestone | Deliverable | Status | Evidence |
 |---|---|---|---|
@@ -191,7 +253,7 @@ git shortlog -sn --all                                       # contributors
 bring-up). The architecture document §24 numbers the same work starting at 0 —
 same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 
-### 4.3 Roadmap
+### 5.3 Roadmap
 
 - [x] Repo setup: clean `.gitignore`, pinned submodule, README kept in step with the code
 - [x] VeeR EL2 boots and prints `TEST_PASSED` in VCS
@@ -217,9 +279,9 @@ same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 
 ---
 
-## 5. Verification methodology: directed today, UVM next
+## 6. Verification methodology: directed today, UVM next
 
-### 5.1 Where the regression is right now
+### 6.1 Where the regression is right now
 
 Ten self-checking SystemVerilog testbenches in `tb/`, run under VCS with
 Verdi/FSDB debug. They are **flat/directed**: BFM tasks drive the bus, an
@@ -234,7 +296,7 @@ stimulus lives in one big `initial` block, there is no reusable driver, no
 coverage model, and swapping one scenario for another means editing the
 testbench.
 
-### 5.2 Where it is going — a UVM environment
+### 6.2 Where it is going — a UVM environment
 
 The plan is to rebuild the regression as a layered UVM environment, IP by IP,
 rather than growing the directed benches forever.
@@ -263,7 +325,7 @@ worth it:
   a new instance, or a second DUT is a string-and-path change, not a
   hierarchical-signal edit.
 
-### 5.3 Order of migration
+### 6.3 Order of migration
 
 1. **AXI 2x8 + AES** — already isolated and passing, so it is the first UVM
    env: AXI master/slave agents, AES reference model in the scoreboard,
@@ -275,12 +337,12 @@ worth it:
 4. **SoC-level virtual sequence** — the end-to-end goal from §2 as one
    `uvm_test`: packet chunks in → telemetry → AES → UART report out.
 
-None of this is built yet — §4.2 has what's actually passing today, and this
+None of this is built yet — §5.2 has what's actually passing today, and this
 section is the plan I'll move into that table one IP at a time.
 
 ---
 
-## 6. Where things stand
+## 7. Where things stand
 
 Some notes on the current state and what I'm taking on next.
 
@@ -322,52 +384,12 @@ Some notes on the current state and what I'm taking on next.
 8. **CRC32 and the Network Telemetry Engine are specified but not written yet.**
    They exist in the architecture document and the memory map — next RTL to land.
 9. **The testbenches are still directed SystemVerilog.** The UVM environment in
-   [§5](#5-verification-methodology-directed-today-uvm-next) — factory-registered
+   [§6](#6-verification-methodology-directed-today-uvm-next) — factory-registered
    components, `uvm_config_db` for virtual interfaces, scoreboards, coverage —
    is the next step for verification.
 
-Every PASS listed above has a log and a waveform behind it, and §14 has the
+Every PASS listed above has a log and a waveform behind it, and §15 has the
 commands to reproduce them.
-
----
-
-## 7. Repository layout
-
-```text
-Network_Telemetry_SoC/
-├── README.md
-├── .gitignore                  # generated files only (see Git policy)
-├── .gitmodules                 # 1 submodule: core/Cores-VeeR-EL2
-├── core/
-│   └── Cores-VeeR-EL2/         # CPU submodule, LOCKED at 06ad26a (do not modify)
-├── rtl/
-│   ├── soc_top.sv              # SoC top: VeeR + AHB fabric + IMEM/DMEM + bridge/UART
-│   ├── ahb/                    # AHB-Lite interconnect, SRAM, default slave, AHB→AXI bridge
-│   ├── aes/                    # AES AXI slave wrapper + vendored AES IP (ip/)
-│   ├── uart/                   # UART AXI slave wrapper + vendored UART IP (ip/)
-│   └── interconnects/          # AXI 2x8 interconnect, arbiter, priority encoder
-├── sw/                         # bare-metal firmware: src/, include/, linker/, Makefile
-├── sim/                        # VCS/Verdi side of the fw0 flow: Makefile, filelist.f
-├── Makefile                    # root delegator: firmware -> images -> snapshot -> compile -> run -> gate
-├── tb/                         # self-checking testbenches (*.sv), one per regression
-├── run/                        # VCS filelists (*.f), flow scripts (*.csh),
-│                               # Verdi signal groups (*.rc), tcl; run/fw_wave.rc = fw0 waves
-├── scripts/                    # generators (axi_interconnect_wrap.py, p2_prog_gen.py)
-├── aes/                        # OpenCores/asics.ws AES-128 core (vendored)
-├── axi-lite_uart-ipcore-develop/  # original UART drop-in (git-ignored; sources
-│                               #   copied into rtl/uart/ip/)
-└── doc/                        # architecture docs, phase records, screenshots
-```
-
-Notes:
-
-- `rtl/` is what simulation compiles; `rtl/aes/ip/` holds the subset of the
-  AES core used by the interconnect regressions, while `aes/aes_core-master/`
-  is the full upstream core used by `run/aes_run.f`.
-- `aes/axi_aes_wrapper.v` is an older copy; the filelists use
-  `rtl/aes/axi_aes_wrapper.v`.
-- UART IP sources in `rtl/uart/ip/` were copied out of
-  `axi-lite_uart-ipcore-develop/` (third-party drop-in, git-ignored).
 
 ---
 
@@ -424,7 +446,7 @@ Details and validation: `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md
 (Source: `doc/RISC_V_Network_Telemetry_SoC_Architecture_Document_v3.md` §9.)
 
 The map above is the target layout; what is wired into `soc_top` today is in
-[§6](#6-where-things-stand) point 2.
+[§7](#7-where-things-stand) point 2.
 
 ---
 
@@ -447,9 +469,60 @@ Measured on 2026-09-26; fix them (or symlink) when relocating the repo:
 
 ## 11. Running the regressions
 
-All flows run from `run/` and need `csh` + `source /home/student/cshrc`.
-Everything they generate (`simv`, `*.log`, `*.fsdb`, `csrc/`, `verdiLog/`) is
-git-ignored; build products stay in `/tmp` for Phase 1/2.
+The Phase 1/2/3 regressions are driven by the `run/*.csh` flow scripts, and the
+**fw0 firmware flow is driven by `make`** — both are first-class entry points,
+so use whichever fits. Everything they generate (`simv`, `*.log`, `*.fsdb`,
+`csrc/`, `verdiLog/`) is git-ignored; build products stay in `/tmp` for
+Phase 1/2.
+
+### 11.1 `make` targets (fw0 + SoC, from the repository root)
+
+The root `Makefile` is a delegator only — no build logic. It hands firmware to
+`sw/Makefile` and simulation to `sim/Makefile`. Needs `bash`, VCS, and the RISC-V
+cross-compiler on `PATH` (`/opt/riscv/bin`).
+
+```bash
+make help          # list every target
+make all           # = firmware -> mem -> veer-config -> rtl -> sim  (the whole flow)
+make firmware      # sw/build/firmware.elf
+make inspect       # ELF/section/symbol gates G1-G7, G11
+make mem           # sw/build/imem.mem + dmem.mem + firmware.ihex  (G8-G10, G12)
+make veer-config   # build/snapshots/p2_soc  (VeeR snapshot, project-local)
+make rtl           # VCS compile into build/sim/fw0
+make sim           # run + gate on BOTH tokens: P2_TB2_RESULT and AHB_RW_MONITOR (+ G13)
+make verdi         # open build/sim/fw0/p2_veer_soc.fsdb with run/fw_wave.rc
+make wave          # print that verdi command instead of launching it
+make clean         # remove sw/build, build/sim, build/snapshots
+```
+
+Common sequences:
+
+```bash
+make -C sw all inspect   # firmware only, gates G1-G13
+make                     # full flow; gates on both sim tokens
+make verdi               # full flow, then open the waveform
+```
+
+Useful `sw/` sub-targets: `make -C sw elf | mem | dis | manifest | clean`.
+
+### 11.2 `run/` flow scripts vs `make`
+
+| What you want | `run/` script (from `run/`) | `make` equivalent (from repo root) |
+|---|---|---|
+| VeeR EL2 bring-up | `./p1_full_flow.csh` | — (uses VeeR's own `tools/Makefile`) |
+| AHB-Lite fabric + VeeR through fabric | `./p2_full_flow.csh` | — |
+| UART subsystem, isolated | `./uart_full_flow.csh` | — |
+| UART on the SoC (Phase 3) | `./p3_uart_flow.csh` | — |
+| **C firmware → images → VeeR boot → AHB R/W** | — | `make` (or `make firmware mem veer-config rtl sim`) |
+| Firmware build only, no simulation | — | `make -C sw all inspect` |
+| Compile the SoC RTL without running | — | `make rtl` |
+| Re-run only the simulation from a built tree | — | `make sim` |
+| Open a waveform | `./p1_open_verdi.csh`, `./p2_open_verdi.csh` | `make verdi` (fw0 FSDB) |
+
+The `csh` scripts are self-contained (`veer.config` → `vcs-build` → `program.hex`
+→ `simv`) and pin their own workdirs; `make` is project-local and writes under
+`build/`. Phase 1/2 keep their build products in `/tmp` by design — see
+[§10](#10-hard-coded-paths).
 
 ### Phase 1 — VeeR bring-up (PASS)
 
@@ -610,18 +683,48 @@ verdi -ssf <wave.fsdb> -dbdir simv.daidir -sswr run/<name>_wave.rc &
 | `doc/Phase1_VeeR_Bringup_Completion_Record.md` | Phase 1 evidence |
 | `doc/Phase2_AHB_Fabric_Completion_Record.md` | Phase 2 evidence |
 | `doc/Phase3_UART_End_To_End_Completion_Record.md` | Phase 3 evidence: VeeR → AHB → AXI → UART → `uart_tx`, plus the three root causes fixed (bridge 64-bit split, fabric arbiter, UART IP TX FIFO reset) |
-| `doc/AES_AXI_Integration_Verification_Record.md` | AES/AXI subsystem evidence (status table update pending — §6.3) |
+| `doc/AES_AXI_Integration_Verification_Record.md` | AES/AXI subsystem evidence (status table update pending — §7.3) |
 | `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md` | Cross-toolchain install/validation |
 | `doc/RISC_V_SW_Build_and_Simulation_Image_Architecture_Specification.md` | Frozen firmware build → simulation image flow |
 | `doc/SW_HW_Memory_Image_Architecture_First_Principles_and_Spec_Amendments.md` | Image-conversion first principles + amendments H.1–H.9 |
 | `doc/Firmware_Build_and_AHB_RW_Verification_Plan.md` | Execution plan — C firmware → Makefile → hex → AHB R/W in Verdi (Steps 1–3a **done**) |
 | `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` | fw0 C toolchain: build output, gates G1–G13, two image defects found |
 | `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` | fw0 Step 3a evidence: both terminal tokens, cycle-by-cycle AHB read/write tables from the FSDB, the `ahb_interconnect` address-phase-hold dependency, findings N8–N10 |
+| `doc/Group_SoC_docs/` | Group project — see [§13](#13-group-project-separate-scope) |
 | `doc/screenshots/` | Verdi captures |
 
 ---
 
-## 13. Git policy
+## 13. Group project (separate scope)
+
+Everything above describes **my own** SoC work in this repository. The
+`doc/Group_SoC_docs/` folder is a **separate scope** — group-project design
+documents that are not yet implemented in RTL. It is kept apart on purpose:
+nothing in it is verified, and nothing in it is covered by the regressions
+above.
+
+| File | What it is |
+|---|---|
+| `GROUP_PROJECT_CONTEXT.md` | Full handover context for the group project — architecture, core/IP, address map, firmware, toolchain, tests, known gaps. Start here. |
+| `SoC_Address_Map.xlsx` | **Canonical** address map, design-only (8 sheets, no change log, no repo status) |
+| `Network_Telemetry_SoC_Address_Map.xlsx` | Detailed Rev B workbook with change log and spec traceability (10 sheets) |
+| `RISC_V_Secure_Network_Telemetry_SoC_Initial_Project_Plan.md` | The group project plan |
+| `Block_diagram.png` | System block diagram |
+
+Two things worth knowing before using it:
+
+- The canonical map **supersedes [§9](#9-memory-map)**. It pitches the
+  peripheral aperture at 8 KB — a 4 KB window plus a 4 KB guard per slot — and
+  extends the aperture to 16 peripheral windows (`0x10000000`–`0x1001FFFF`).
+  Timer, GPIO, NTE, AES and CRC32 all move; UART stays at `0x1000_0000`.
+- Consequently `rtl/aes/aes_axi_slave.v` (`AES_BASE = 0x1000_4000`),
+  `sw/include/soc.h` and the AXI M03–M07 windows still encode the **old**
+  addresses, and the AES regression must be re-run once they are fixed. See
+  `GROUP_PROJECT_CONTEXT.md` §7.3.
+
+---
+
+## 14. Git policy
 
 **Tracked** — anything a fresh clone needs to reproduce a result: RTL
 (`rtl/`, `aes/`), testbenches (`tb/`), flow scripts and filelists
@@ -652,7 +755,7 @@ Other rules:
 
 ---
 
-## 14. README ↔ repository verification checklist
+## 15. README ↔ repository verification checklist
 
 Run these from the repo root to confirm this file still matches reality:
 
@@ -667,10 +770,10 @@ git check-ignore rtl/uart/uart_axi_slave.v tb/tb_uart_axi_slave.sv; echo $?     
 # 3. Repo is in sync with GitHub (0 0 only after a push)
 git fetch && git rev-list --left-right --count origin/main...HEAD                 # 0  0
 
-# 4. Tracker numbers still match §4.1
-git rev-list --count HEAD          # 25
-git ls-files | wc -l               # 119
-git archive HEAD | tar -xO | wc -l # 44503
+# 4. Tracker numbers still match §5.1
+git rev-list --count HEAD          # 26
+git ls-files | wc -l               # 124
+git archive HEAD | tar -xO | wc -l # 52964
 
 # 5. Every path referenced above exists
 for p in rtl/soc_top.sv rtl/ahb rtl/aes rtl/uart rtl/interconnects scripts doc sw sim \
