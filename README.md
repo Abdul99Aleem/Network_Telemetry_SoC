@@ -691,7 +691,7 @@ verdi -ssf <wave.fsdb> -dbdir simv.daidir -sswr run/<name>_wave.rc &
 | `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md` | fw0 C toolchain: build output, gates G1–G13, two image defects found |
 | `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` | fw0 Step 3a evidence: both terminal tokens, cycle-by-cycle AHB read/write tables from the FSDB, the `ahb_interconnect` address-phase-hold dependency, findings N8–N10 |
 | `doc/Group_SoC_docs/` | Group project — see [§13](#13-group-project-separate-scope) |
-| `doc/screenshots/` | Verdi captures |
+| `doc/screenshots/` | Verdi captures (e.g. `IFU_Verified.png`) |
 
 ---
 
@@ -756,6 +756,18 @@ Other rules:
 ---
 
 ## 15. README ↔ repository verification checklist
+## 16. Changes merged from feature/sw-build-ahb-rw
+
+The `feature/sw-build-ahb-rw` branch was merged into `main` (commit `d0a34a4`) to consolidate environment/documentation updates alongside preserving all existing work on `main`. Key changes brought in:
+
+- `doc/PC_Changeover_Bringup_Checklist.md` (added) — A comprehensive, step-by-step PC changeover/bringup checklist covering OS base packages, restoration of out-of-repo artifacts (Synopsys install tree, `~/cshrc`, `/etc/profile.d/riscv.sh`, `/opt/riscv`), Synopsys VCS/Verdi setup, license environment, RISC-V cross-toolchain build/validation, repo clone + submodule pin (`core/Cores-VeeR-EL2` @ `06ad26a`), path/symlink verification, expected gate tokens (`P2_TB2_RESULT: PASS`, `AHB_RW_MONITOR: PASS`), Verdi GUI verification, and full regression runs (`p1_full_flow.csh`, `p2_full_flow.csh`, `p3_uart_flow.csh`).
+- `doc/screenshots/IFU_Verified.png` (added) — Verdi/IFU verification screenshot captured during verification runs.
+- `tb/tb_veer_uart_soc.sw.tmp` (added, empty) — Temporary simulation artifact file added by the branch.
+- `README.md` — The feature branch originally contained README reorganization changes (section renumbering/restructuring). During merge, `main`'s current README structure (from commit `bb26e7f`) was preserved; relevant documentation references (checklist, screenshots) have been updated in this README to reflect the merged artifacts. Group project docs under `doc/Group_SoC_docs/` were retained (not deleted) to preserve changes from `main`.
+- Merge details: merged `origin/feature/sw-build-ahb-rw` (parents `bb26e7f` and `2bb650b`) into `main` at `d0a34a4`. All changes from `main` were preserved; the merged artifacts above were brought in from the feature branch.
+
+All changes have been integrated cleanly with no loss of `main` content; working tree is clean.
+
 
 Run these from the repo root to confirm this file still matches reality:
 
