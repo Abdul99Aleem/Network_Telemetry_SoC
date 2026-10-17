@@ -97,6 +97,20 @@ module ahb_interconnect #(
     input  wire                     uart_hreadyout,
     input  wire                     uart_hresp,
 
+    // ---- AES slave (bridged to AXI4) ----
+    output wire                     aes_hsel,
+    output wire [ADDR_WIDTH-1:0]    aes_haddr,
+    output wire [2:0]               aes_hburst,
+    output wire                     aes_hmastlock,
+    output wire [3:0]               aes_hprot,
+    output wire [2:0]               aes_hsize,
+    output wire [1:0]               aes_htrans,
+    output wire                     aes_hwrite,
+    output wire [DATA_WIDTH-1:0]    aes_hwdata,
+    input  wire [DATA_WIDTH-1:0]    aes_hrdata,
+    input  wire                     aes_hreadyout,
+    input  wire                     aes_hresp,
+
     // ---- DEFAULT (error) slave ----
     output wire                     def_hsel,
     output wire [ADDR_WIDTH-1:0]    def_haddr,
@@ -167,15 +181,18 @@ module ahb_interconnect #(
     wire imem_match = (mux_haddr[31:15] == 17'h0000); // 0x0000_0000/32K
     wire dmem_match = (mux_haddr[31:15] == 17'h0002); // 0x0001_0000/32K
     wire uart_match = (mux_haddr[31:12] == 20'h10000); // 0x1000_0000/4K
+    wire aes_match  = (mux_haddr[31:12] == 20'h10004); // 0x1000_4000/4K
 
     wire sel_imem = mux_active && imem_match;
     wire sel_dmem = mux_active && !imem_match && dmem_match;
     wire sel_uart = mux_active && !imem_match && !dmem_match && uart_match;
-    wire sel_def  = mux_active && !imem_match && !dmem_match && !uart_match;
+    wire sel_aes  = mux_active && !imem_match && !dmem_match && !uart_match && aes_match;
+    wire sel_def  = mux_active && !imem_match && !dmem_match && !uart_match && !aes_match;
 
     assign imem_hsel = sel_imem;
     assign dmem_hsel = sel_dmem;
     assign uart_hsel = sel_uart;
+    assign aes_hsel  = sel_aes;
     assign def_hsel  = sel_def;
 
     assign imem_haddr = mux_haddr; assign imem_hburst = mux_hburst;
@@ -193,6 +210,11 @@ module ahb_interconnect #(
     assign uart_hsize = mux_hsize; assign uart_htrans = mux_htrans;
     assign uart_hwrite = mux_hwrite; assign uart_hwdata = mux_hwdata;
 
+    assign aes_haddr = mux_haddr; assign aes_hburst = mux_hburst;
+    assign aes_hmastlock = mux_hmastlock; assign aes_hprot = mux_hprot;
+    assign aes_hsize = mux_hsize; assign aes_htrans = mux_htrans;
+    assign aes_hwrite = mux_hwrite; assign aes_hwdata = mux_hwdata;
+
     assign def_haddr = mux_haddr; assign def_hburst = mux_hburst;
     assign def_hmastlock = mux_hmastlock; assign def_hprot = mux_hprot;
     assign def_hsize = mux_hsize; assign def_htrans = mux_htrans;
@@ -207,6 +229,7 @@ module ahb_interconnect #(
     wire [2:0] addr_sel = sel_imem ? 3'b001 :
                           sel_dmem ? 3'b010 :
                           sel_uart ? 3'b011 :
+                          sel_aes  ? 3'b101 :
                           sel_def  ? 3'b100 : 3'b000;
 
     wire [DATA_WIDTH-1:0] mux_hrdata;
@@ -215,13 +238,16 @@ module ahb_interconnect #(
 
     assign mux_hrdata    = (data_sel == 3'b001) ? imem_hrdata :
                            (data_sel == 3'b010) ? dmem_hrdata :
-                           (data_sel == 3'b011) ? uart_hrdata : def_hrdata;
+                           (data_sel == 3'b011) ? uart_hrdata :
+                           (data_sel == 3'b101) ? aes_hrdata : def_hrdata;
     assign mux_hreadyout = (data_sel == 3'b001) ? imem_hreadyout :
                            (data_sel == 3'b010) ? dmem_hreadyout :
-                           (data_sel == 3'b011) ? uart_hreadyout : def_hreadyout;
+                           (data_sel == 3'b011) ? uart_hreadyout :
+                           (data_sel == 3'b101) ? aes_hreadyout : def_hreadyout;
     assign mux_hresp     = (data_sel == 3'b001) ? imem_hresp :
                            (data_sel == 3'b010) ? dmem_hresp :
-                           (data_sel == 3'b011) ? uart_hresp : def_hresp;
+                           (data_sel == 3'b011) ? uart_hresp :
+                           (data_sel == 3'b101) ? aes_hresp : def_hresp;
 
     always @(posedge hclk or negedge hreset_n) begin
         if (!hreset_n) begin

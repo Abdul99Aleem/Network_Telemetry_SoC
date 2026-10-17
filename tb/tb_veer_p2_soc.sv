@@ -197,6 +197,7 @@ module tb_veer_p2_soc
     // "serial receiver" section below.
     wire uart_tx;
     wire uart_irq;
+    wire aes_irq;
 
     soc_top #(.IMEM_HEX("p2_prog.hex"), .DMEM_HEX("")) u_soc (
         .clk(core_clk), .reset_n(rst_l_combined),
@@ -210,7 +211,8 @@ module tb_veer_p2_soc
         .lsu_hsize(lsu_hsize), .lsu_htrans(lsu_htrans),
         .lsu_hwrite(lsu_hwrite), .lsu_hwdata(lsu_hwdata),
         .lsu_hrdata(lsu_hrdata), .lsu_hready(lsu_hready), .lsu_hresp(lsu_hresp),
-        .uart_tx_o(uart_tx), .uart_irq_o(uart_irq)
+        .uart_tx_o(uart_tx), .uart_irq_o(uart_irq),
+        .aes_irq_o(aes_irq)
     );
 
     // ================= tightly-coupled SRAMs (VeeR tb_top pattern) =================

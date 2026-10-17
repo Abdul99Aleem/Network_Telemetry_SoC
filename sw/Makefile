@@ -163,13 +163,13 @@ $(BUILD)/startup.o: src/startup.S | $(BUILD)
 
 # One rule per tree: objects are keyed on basename, and the trees hold no
 # colliding names (src/lib.c vs tests/* vs probes/*).
-$(BUILD)/%.o: src/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
+$(BUILD)/%.o: src/%.c include/soc.h include/test.h include/uart.h include/aes.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: tests/%.c include/soc.h include/test.h include/uart.h \
                include/memtest.h \
                tests/t_bus.c tests/t_mem.c tests/memtest_core.c \
-               tests/t_uart.c | $(BUILD)
+               tests/t_uart.c tests/t_aes.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: probes/%.c include/soc.h include/test.h include/uart.h | $(BUILD)

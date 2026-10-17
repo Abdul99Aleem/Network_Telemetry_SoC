@@ -283,6 +283,10 @@ module tb_ahb_cycle_monitor #(
         return (a[31:12] == 20'h10000);
     endfunction
 
+    function automatic bit is_aes(input logic [31:0] a);
+        return (a[31:12] == 20'h10004);
+    endfunction
+
     // ----------------------------------------------------------------- report
     task automatic report(input string reason);
         int unsigned fail_count;
@@ -391,6 +395,8 @@ module tb_ahb_cycle_monitor #(
                 end else if (is_uart(lsu_haddr)) begin
                     if (lsu_hwrite) uart_wr <= uart_wr + 1;
                     else            uart_rd <= uart_rd + 1;
+                end else if (is_aes(lsu_haddr)) begin
+                    // AES is a real slave (M4a); not a default ERROR hit.
                 end else begin
                     def_sel <= def_sel + 1;
                     if (def_addr_count < DEF_ADDR_MAX) begin
