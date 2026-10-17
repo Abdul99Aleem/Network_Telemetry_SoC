@@ -1707,3 +1707,130 @@ The desired final AES hardware/software contract is:
 
 The current implementation reaches the `AES BUSY` state but does not yet
 reach `AES DONE`. That transition is the next verification milestone.
+
+------------------------------------------------------------------------
+
+# 35. M4a SoC Integration Addendum (2026-10-17)
+
+## 35.1 Scope and branch
+
+- Branch: `feature/m4a-aes-integration`
+- Integration commit before this documentation update: `00145e4 M4a: integrate AES accelerator into SoC (polling)`
+- AES window: `0x1000_4000` - `0x1000_4FFF` (4 KB), fifth AHB slave.
+- Transport path: `VeeR EL2 -> AHB-Lite interconnect -> ahb_to_axi_bridge (AES instance) -> aes_axi_slave -> aes_cipher_top`.
+- UART path and monitor contracts were left unchanged.
+
+## 35.2 Register map used by the integration
+
+| Offset | Absolute | Register | Access |
+|---|---|---|---|
+| `0x00` | `0x1000_4000` | CONTROL | W |
+| `0x04` | `0x1000_4004` | STATUS | R |
+| `0x08` | `0x1000_4008` | KEY0 | R/W |
+| `0x0C` | `0x1000_400C` | KEY1 | R/W |
+| `0x10` | `0x1000_4010` | KEY2 | R/W |
+| `0x14` | `0x1000_4014` | KEY3 | R/W |
+| `0x18` | `0x1000_4018` | DATA0 | R/W |
+| `0x1C` | `0x1000_401C` | DATA1 | R/W |
+| `0x20` | `0x1000_4020` | DATA2 | R/W |
+| `0x24` | `0x1000_4024` | DATA3 | R/W |
+| `0x28` | `0x1000_4028` | RESULT0 | R |
+| `0x2C` | `0x1000_402C` | RESULT1 | R |
+| `0x30` | `0x1000_4030` | RESULT2 | R |
+| `0x34` | `0x1000_4034` | RESULT3 | R |
+
+## 35.3 NIST known-answer vector
+
+- Key words: `0x0c0d0e0f, 0x08090a0b, 0x04050607, 0x00010203`
+- Plaintext words: `0xccddeeff, 0x8899aabb, 0x44556677, 0x00112233`
+- Expected ciphertext words: `0x70b4c55a, 0xd8cdb780, 0x6a7b0430, 0x69c4e0d8`
+
+## 35.4 Root cause of high-lane register failure
+
+The failing writes reached the AES peripheral with the correct address and
+data, but the bridge generated `WSTRB = 0` for 32-bit word accesses whose
+AHB address had bit 2 set (`0x...004`, `0x...00C`, `0x...014`, ...).
+
+Root cause: `ahb_to_axi_bridge.ahb_lanes()` calculated the word lane mask
+with an 8-bit shift:
+
+```verilog
+3'b010: ahb_lanes = 8'h0F << {addr_lo[2], 3'b000}; // word
+```
+
+For `addr_lo[2] == 1`, this shifts `8'h0F` left by 8 bits. Because the
+result is an 8-bit value, the mask became `8'h00`. Consequently
+`lanes_now[7:4]` was `4'h0`, so `wstrb_q` was `4'h0` for every high-lane
+32-bit write. `apply_wstrb()` therefore applied no byte enables and
+`KEY1`, `KEY3`, `DATA1`, and `DATA3` remained zero.
+
+Debug evidence before the fix:
+
+```text
+DBG BRIDGE LAUNCH a_q=1000400c ... lane_hi=1 lanes_now=00
+DBG AES write complete addr=1000400c offset=0c data=08090a0b strb=0
+DBG BRIDGE LAUNCH a_q=10004014 ... lane_hi=1 lanes_now=00
+DBG AES write complete addr=10004014 offset=14 data=00010203 strb=0
+```
+
+## 35.5 RTL fix
+
+File: `rtl/ahb/ahb_to_axi_bridge.sv`
+
+```verilog
+3'b010: ahb_lanes = 8'h0F << {addr_lo[2], 2'b00};    // word
+```
+
+This changes the high-lane word shift from 8 to 4, producing `8'hF0` for
+`addr_lo[2] == 1`. The bridge then drives `WSTRB = 4'hF` for high-lane
+32-bit writes while preserving the existing low-lane behavior and the
+existing 64-bit AHB beat handling.
+
+## 35.6 Before/after evidence
+
+Before fix:
+
+- `make -C sim test-aes`: `ntests=9 npass=6 nfail=3`
+- First failure: `got=0x00000000`, expected `0x08090a0b`
+- `KEY1` and `KEY3` read back as `0x00000000`
+- AES slave debug showed `strb=0` for offsets `0x0C` and `0x14`
+
+After fix:
+
+- `make -C sim test-aes`: `ntests=9 npass=9 nfail=0`
+- `KEY0..KEY3` and `DATA0..DATA3` read back correctly
+- NIST ciphertext matches: `0x70b4c55a, 0xd8cdb780, 0x6a7b0430, 0x69c4e0d8`
+- `P2_TB2_RESULT: PASS`
+- `AHB_RW_MONITOR: PASS` with `def=0`, `bus_err=0`
+
+## 35.7 Validation matrix
+
+| Test | Command | Exit status | Result token / counts | Log |
+|---|---|---:|---|---|
+| Standalone AES core | `/tmp/opencode/aescore/simv` from `run/aes_run.f` | 0 | `Test Done. Found 0 Errors.` | `/tmp/opencode/aescore/sim.log` |
+| AES AXI slave direct | `/tmp/opencode/aesdirect/simv` from `run/aes_axi_run.f` | 0 | `Register readback PASS`, `AES AXI SLAVE TEST PASSED` | `/tmp/opencode/aesdirect/sim.log` |
+| AES AXI interconnect | `/tmp/opencode/aesic/simv` from `run/aes_axi_interconnect_run.f` | 0 | `AXI INTERCONNECT -> AES INTEGRATION: PASS` | `/tmp/opencode/aesic/sim.log` |
+| AES two-master | `/tmp/opencode/aes2m/simv` from `run/aes_axi_2master_run.f` | 0 | `PASS checks : 19 / FAIL checks : 0`, `TWO-MASTER AES TEST PASSED` | `/tmp/opencode/aes2m/sim.log` |
+| SoC AES | `make -C sim test-aes` | 0 | `ntests=9 npass=9 nfail=0`; `P2_TB2_RESULT: PASS`; `AHB_RW_MONITOR: PASS`; `UART_CHECK_RESULT: PASS` | `/tmp/opencode/test-aes.log` |
+| SoC AES corrupt | `make -C sim test-aes-corrupt` | 2 (expected negative) | `UART_CHECK_RESULT: FAIL`; `P2_TB2_RESULT: PASS`; `AHB_RW_MONITOR: PASS` | `/tmp/opencode/test-aes-corrupt.log` |
+| SoC UART | `make -C sim test-uart` | 0 | `ntests=14 npass=14 nfail=0`; `UART_CHECK_RESULT: PASS` | `/tmp/opencode/test-uart.log` |
+| Full C suite | `make -C sim test-suite` | 0 | `ntests=24 npass=24 nfail=0`; `UART_CHECK_RESULT: PASS` | `/tmp/opencode/test-suite.log` |
+| Memory tests | `make -C sim test-memory` | 0 | `ntests=9 npass=9 nfail=0`; `UART_CHECK_RESULT: PASS` | `/tmp/opencode/test-memory.log` |
+| Bus tests | `make -C sim test-bus` | 0 | `BUS_CHECK_RESULT: PASS` | `/tmp/opencode/test-bus.log` |
+| fw0 baseline | `make -C sim test-fw0` | 0 | `P2_TB2_RESULT: PASS`; `AHB_RW_MONITOR: PASS` | `/tmp/opencode/test-fw0.log` |
+
+## 35.8 Contract preservation
+
+- AES accesses are classified as a real slave in `tb/tb_ahb_cycle_monitor.sv`; `def=0` for AES runs.
+- UART end-to-end output remains correct (`UART_CHECK_RESULT: PASS`).
+- VeeR reset vector and memory layout unchanged.
+- AES register map remains at `0x1000_4000` with a 4 KB window.
+- No vendored VeeR EL2 source was modified.
+- Temporary `$display` instrumentation was removed from `rtl/aes/aes_axi_slave.v` and `rtl/ahb/ahb_to_axi_bridge.sv`.
+- `git diff --check` produced no whitespace errors.
+
+## 35.9 Remaining limitations
+
+- The SoC C AES suite validates polling completion, not interrupt service. The standalone two-master regression verifies `aes_irq` assertion after completion.
+- The untracked file `doc/UVM_Testplan_RISC-V_Network_Telemetry_SoC_Updated.xlsx` is unrelated to this change and was not modified.
+- Standalone regression binaries/logs are under `/tmp/opencode` and are not part of the repository.
