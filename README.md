@@ -17,7 +17,7 @@ and reports it over UART — all driven by a VeeR EL2 RISC-V core.**
 - **Verification methodology:** directed self-checking SystemVerilog today →
   layered **UVM** environment next (UVM factory overrides + `uvm_config_db`,
   see [§6](#6-verification-methodology-directed-today-uvm-next))
-- **README last re-verified against a live run:** 2026-09-26
+- **README last re-verified against a live run:** 2026-10-17
 
 ---
 
@@ -197,35 +197,35 @@ relocate cleanly — see [§10](#10-hard-coded-paths).
 
 ### 5.1 Numbers
 
-Snapshot as of **2026-09-26**. Badges above update themselves; this table is
+Snapshot as of **2026-10-17**. Badges above update themselves; this table is
 the manual record.
 
 | Metric | Value |
 |---|---|
-| Commits so far (`git rev-list --count HEAD`) | **26** |
-| Active window | **28 days** — 2026-08-29 → 2026-09-26 |
+| Commits so far (`git rev-list --count HEAD`) | **39** |
+| Active window | **49 days** — 2026-08-29 → 2026-10-17 |
 | Developers | **1** (two git identities: lab account + GitHub) |
-| Tracked files | **124** |
-| Lines committed in `HEAD` (excl. CPU submodule) | **52,964** |
+| Tracked files | **146** |
+| Lines committed in `HEAD` (excl. CPU submodule) | **62,595** |
 | → RTL (`rtl/`) | 7,489 lines / 26 files |
-| → Testbenches (`tb/`) | 6,928 lines / 11 benches |
+| → Testbenches (`tb/`) | 7,661 lines / 12 benches |
 | → Flow (`run/`) | 1,517 lines / 27 files (11 filelists, 7 `csh` flows, Verdi RCs) |
-| → Firmware (`sw/`) | 788 lines / 6 files |
-| → Simulation flow (`sim/`) | 177 lines / 2 files |
+| → Firmware (`sw/`) | 3,200 lines / 16 files |
+| → Simulation flow (`sim/`) | 447 lines / 2 files |
 | → Scripts (`scripts/`) | 607 lines / 3 generators |
-| → Documentation (`doc/`) | 30,855 lines / 24 documents (19 project + 5 group) |
+| → Documentation (`doc/`) | 36,954 lines / 35 documents (30 project + 5 group) |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
-| Regression groups passing | **6** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end) |
+| Regression groups passing | **7** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end, C test suite Phase 4) |
 | Regression groups in progress | **0** |
 
 Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
 
 ```bash
-git rev-list --count HEAD                                    # 26 commits
+git rev-list --count HEAD                                    # 39 commits
 git log --reverse --format=%ad --date=short | head -1        # first commit
 git ls-files | wc -l                                         # 124 tracked files
-git archive HEAD | tar -xO | wc -l                           # 52964 committed lines
+git archive HEAD | tar -xO | wc -l                           # 62595 committed lines
 for d in rtl tb run scripts doc sw sim; do                   # per-directory
   printf '%-8s %6d %3d files\n' "$d" \
     "$(git archive HEAD $d | tar -xO | wc -l)" \
