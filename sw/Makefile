@@ -36,6 +36,21 @@ MABI    := ilp32
 OPT     ?= -O0 -g
 BUILD   ?= build
 
+# Which translation unit supplies main(). Default is the fw0 memory probe
+# (doc/Firmware_Build_and_AHB_RW_Verification_Plan.md). Phase 0 of
+# doc/Complete_Updated_C_Peripheral_and_Memory_Test_Suite_Plan.md overrides
+# this to build the ICCM/DCCM access spike into its own BUILD dir without
+# disturbing the fw0 artifacts, e.g.
+#     make -C sw BUILD=build/spike MAIN_SRC=src/spike.c all
+# Later phases use the same hook for -DTEST_SELECT_* variants (§6.1).
+MAIN_SRC ?= src/main.c
+
+# Extra flags appended to CFLAGS. Used by the Phase 0 spike to select a single
+# probe region (-DSPIKE_ONLY_DCCM / -DSPIKE_ONLY_ICCM): a faulting access traps
+# and startup.S parks forever, so ICCM and DCCM cannot share one run. Later
+# phases carry -DTEST_SELECT_* through the same hook (§6.1).
+EXTRA_CFLAGS ?=
+
 # Region bases — must stay in lock-step with sw/linker/veer.ld MEMORY and
 # rtl/soc_top.sv address decode (spec §9.1).
 IMEM_BASE := 0x00000000
@@ -58,7 +73,8 @@ CFLAGS := \
     $(OPT) \
     -ffreestanding -fno-builtin \
     -Wall -Wextra \
-    -Iinclude
+    -Iinclude \
+    $(EXTRA_CFLAGS)
 
 # src/lib.c only: stop GCC recognising memcpy/memset loops and rewriting them
 # into calls to themselves (spec §8.4).
@@ -77,6 +93,7 @@ LDFLAGS := \
 # Objects
 # ---------------------------------------------------------------------------
 OBJS := $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/lib.o
+MAIN_OBJ := $(BUILD)/main.o
 
 .PHONY: all elf dis ihex mem verify-images inspect manifest clean help
 .DEFAULT_GOAL := all
@@ -108,7 +125,7 @@ $(BUILD)/firmware.elf: $(OBJS) $(LDSCRIPT) | $(BUILD)
 $(BUILD)/startup.o: src/startup.S | $(BUILD)
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-$(BUILD)/main.o: src/main.c include/soc.h | $(BUILD)
+$(MAIN_OBJ): $(MAIN_SRC) include/soc.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/lib.o: src/lib.c | $(BUILD)
@@ -242,7 +259,15 @@ inspect: $(BUILD)/firmware.elf $(BUILD)/imem.mem $(BUILD)/dmem.mem
 	@$(READELF) -h $< | grep -q "Entry point address: *0x0" || { echo "[SW] FAIL G5: e_entry != 0x0"; exit 1; }
 	@$(NM) -n $< | grep -q "^00000000 T _start"             || { echo "[SW] FAIL G5: _start not at 0x0"; exit 1; }
 	@$(NM) -n $< | grep -q " T main"                         || { echo "[SW] FAIL G5: no main"; exit 1; }
-	@$(NM) -n $< | grep -q "^00018000 B __stack_top"         || { echo "[SW] FAIL G5: __stack_top != 0x00018000"; exit 1; }
+	@# Pin the ADDRESS, which is the real contract (veer.ld:108 already asserts
+	@# it at link time). The nm section-type letter is deliberately not matched:
+	@# __stack_top is assigned after the .bss output section (veer.ld:81), and
+	@# GNU ld attributes it to whichever section is current. With a non-empty
+	@# .bss that is `B`; with an EMPTY .bss (e.g. a probe image with no .bss
+	@# arrays, as in build/spike) ld drops the zero-size section and reports `D`.
+	@# Address is unchanged and __data_size stays 4, so there is no correctness
+	@# issue — only the letter differs. Relaxed 2026-10-17 for the Phase 0 spike.
+	@$(NM) -n $< | grep -qE "^00018000 [A-Z] __stack_top$$"  || { echo "[SW] FAIL G5: __stack_top != 0x00018000"; $(NM) -n $< | grep "__stack_top"; exit 1; }
 	@echo "[SW] PASS G5"
 	@echo "[SW] ==== G6  sections inside IMEM/DMEM, never core-local ====="
 	@$(READELF) -SW $< | grep -E "\.text|\.rodata|\.data|\.bss" | sed 's/^/[SW]     /'

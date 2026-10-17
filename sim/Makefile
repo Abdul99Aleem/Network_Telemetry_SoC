@@ -18,7 +18,7 @@
 
 REPO    := $(abspath $(CURDIR)/..)
 SW_DIR  := $(REPO)/sw
-SW_BUILD:= $(SW_DIR)/build
+SW_BUILD?= $(SW_DIR)/build
 SNAP    := $(REPO)/build/snapshots/p2_soc
 WORK    := $(REPO)/build/sim/fw0
 
@@ -43,7 +43,7 @@ FILELIST  := $(REPO)/sim/filelist.f
 VCS_FLAGS := -full64 -sverilog -debug_access+all -kdb \
              +define+RV_OPENSOURCE +error+500 -timescale=1ns/10ps
 
-.PHONY: all veer-config rtl sim verdi wave clean help
+.PHONY: all veer-config rtl sim run verdi wave clean help
 .DEFAULT_GOAL := all
 
 all: sim
@@ -52,6 +52,7 @@ help:
 	@echo "sim/ targets:"
 	@echo "  veer-config  -> $(SNAP)   (D6, project-local)"
 	@echo "  rtl          -> VCS compile into $(WORK)"
+	@echo "  run          -> re-run simv against $(SW_BUILD)/imem.mem (no recompile)"
 	@echo "  sim          -> image + run + gate on BOTH tokens"
 	@echo "  verdi        -> open FW_FSDB with run/fw_wave.rc"
 	@echo "  clean        -> remove $(WORK)"
@@ -98,11 +99,20 @@ rtl: veer-config
 # ---------------------------------------------------------------------------
 FW_HEX := $(WORK)/p2_prog.hex
 
-sim: rtl
+sim: rtl run
+
+# Re-run the already-elaborated simv against $(SW_BUILD)/imem.mem. Split out
+# from `sim` so per-area test variants can swap the image and run without a
+# full VCS recompile — $readmemh runs in an `initial` block at t=0, so the same
+# binary picks up whatever p2_prog.hex is present. This is decision D2 in
+# doc/Complete_Updated_C_Peripheral_and_Memory_Test_Suite_Plan.md §6.1.
+run:
+	@test -x $(WORK)/simv || \
+	    { echo "[SIM] FAIL: no simv in $(WORK) — run 'make -C sim rtl'"; exit 1; }
 	@test -s $(SW_BUILD)/imem.mem || \
 	    { echo "[SIM] FAIL: $(SW_BUILD)/imem.mem missing — run 'make -C sw mem'"; exit 1; }
 	@cp $(SW_BUILD)/imem.mem $(FW_HEX)
-	@echo "[SIM] image: sw/build/imem.mem ($$(wc -c < $(SW_BUILD)/imem.mem) bytes) -> $(FW_HEX)"
+	@echo "[SIM] image: $(SW_BUILD)/imem.mem ($$(wc -c < $(SW_BUILD)/imem.mem) bytes) -> $(FW_HEX)"
 	cd $(WORK) && ./simv -l $(WORK)/sim.log
 	@echo "[SIM] ---- gate: plan §5.2, both tokens required ----"
 	@grep -q "P2_TB2_RESULT: PASS" $(WORK)/sim.log || \

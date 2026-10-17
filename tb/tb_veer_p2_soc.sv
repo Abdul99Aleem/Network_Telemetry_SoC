@@ -299,6 +299,12 @@ module tb_veer_p2_soc
     always @(posedge core_clk) begin
         if (rst_l && !done && u_soc.u_dmem.mem[2] === 8'hFF) begin
             done <= 1'b1;
+            $display("[%0t] MBOX[8..15] spike fields : iccm_rb=%h dccm_rb=%h",
+                     $time,
+                     {u_soc.u_dmem.mem[11], u_soc.u_dmem.mem[10],
+                      u_soc.u_dmem.mem[ 9], u_soc.u_dmem.mem[ 8]},
+                     {u_soc.u_dmem.mem[15], u_soc.u_dmem.mem[14],
+                      u_soc.u_dmem.mem[13], u_soc.u_dmem.mem[12]});
             if (u_soc.u_dmem.mem[0] === 8'h50 &&
                 u_soc.u_dmem.mem[1] === 8'h32 &&
                 u_soc.u_dmem.mem[4] === 8'h50 &&
@@ -347,6 +353,16 @@ module tb_veer_p2_soc
 
     initial begin
         #2000000;
+        // Also dump the Phase-0 spike fields on timeout. A trap parks the CPU
+        // before startup.S can write mbox[2], so the monitor above never fires
+        // and its display is skipped — without this the values written before
+        // the fault would be lost from the log.
+        $display("[%0t] MBOX[8..15] spike fields : iccm_rb=%h dccm_rb=%h",
+                 $time,
+                 {u_soc.u_dmem.mem[11], u_soc.u_dmem.mem[10],
+                  u_soc.u_dmem.mem[ 9], u_soc.u_dmem.mem[ 8]},
+                 {u_soc.u_dmem.mem[15], u_soc.u_dmem.mem[14],
+                  u_soc.u_dmem.mem[13], u_soc.u_dmem.mem[12]});
         $display("[%0t] P2_TB2_RESULT: TIMEOUT FAIL", $time);
         $finish;
     end

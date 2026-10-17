@@ -120,8 +120,8 @@ The initial firmware memory map is:
 |---|---|---:|---|
 | IMEM | `0x00000000–0x00007FFF` | 32 KiB | Never overwrite executing code or live `.rodata`; restrict writes to linker-declared safe scratch after the image. |
 | DMEM | `0x00010000–0x00017FFF` | 32 KiB | Respect reserved result/mailbox area, `.data`, `.bss`, and descending stack. |
-| ICCM | `0xEE000000–0xEE00FFFF` | 64 KiB | Conditional; write each location before reading; never assume reset-zero. |
-| DCCM | `0xF0040000–0xF004FFFF` | 64 KiB | Conditional; write each location before reading; never assume reset-zero. |
+| ICCM | `0xEE000000` | 64 KiB | **NOT reachable from C** — IFU-driven (`el2_ifu_iccm_mem`); a C access routes to the AHB ERROR slave (§3) |
+| DCCM | `0xF0040000` | 64 KiB | Reachable from C, verified 2026-10-17; LSU-driven (`el2_lsu_dccm_mem`); write before read, never assume reset-zero |
 
 | ID | Test | Acceptance criterion |
 |---|---|---|
@@ -134,8 +134,8 @@ The initial firmware memory map is:
 | MEM-07 | Retention sample | Values remain stable after unrelated accesses. |
 | MEM-08 | Lower/upper boundaries | First and last legal aligned words behave correctly without touching reserved memory. |
 | MEM-09 | Region isolation | Writes in one accessible region do not alter a separate region. |
-| MEM-10 | ICCM access | Conditional on Phase 0; write-before-read and bank waveform confirm access. |
-| MEM-11 | DCCM access | Conditional on Phase 0; write-before-read and bank waveform confirm access. |
+| MEM-10 | ICCM access | **BLOCKED — RTL/ARCH.** Resolved 2026-10-17: ICCM is driven by the IFU (`el2_ifu_iccm_mem`, `el2_ifu.sv:149-152`), so a C load/store has no route to it and falls through to the AHB ERROR slave. Not a test — a routing fact. |
+| MEM-11 | DCCM access | **UNBLOCKED.** Verified reachable 2026-10-17 (`dccm_rb=5a5a5678`, `def=0 bus_err=0`). Served by `el2_lsu_dccm_mem` from the LSU. 64 KB; write-before-read always, never assume reset-zero. |
 
 A complete sweep is a long-running test. The simulation watchdog and waveform strategy must be updated before enabling full-region sweeps. Do not write a full sweep into IMEM unless the linker exports and enforces a safe region beyond the complete load image. Do not sweep DMEM over live stack or test results.
 
@@ -477,7 +477,7 @@ unexpected count reports as a mismatch rather than as "!= 0".
 
 | Phase | Work | Dependencies | Exit gate |
 |---|---|---|---|
-| 0 | ICCM/DCCM permission spike | None | Readback values in log; bank-level waveform confirms transactions; scope decision recorded |
+| 0 | ICCM/DCCM permission spike | None | **COMPLETE** — DCCM reachable, ICCM not. Scope decision recorded (`doc/Phase0_ICCM_DCCM_Access_Spike_Record.md`) |
 | 1 | Test framework, linker result table, test discovery, G14/G15 | Existing fw0 flow | Build passes; empty test list reports correctly; G1–G15 pass |
 | 2 | UART reporting, DMEM results dump, serial receiver, timeout/wave strategy | Phase 1 | Deliberately failing test is visible in UART and DMEM; simulation fails correctly |
 | 3 | Memory and AHB bus tests | Phases 1–2; Phase 0 for ICCM/DCCM | Safe patterns pass; expected-error path works; existing bus regression stays green |
@@ -719,7 +719,40 @@ default `868`, or each log line costs ~350 µs of sim time.
 
 ---
 
-# 3. Phase 0 — ICCM/DCCM permission spike
+## 3. Phase 0 — ICCM/DCCM permission spike — **COMPLETE**
+
+**Outcome (2026-10-17): DCCM reachable, ICCM NOT reachable. Evidence and
+root cause in `doc/Phase0_ICCM_DCCM_Access_Spike_Record.md`.**
+
+| Probe | Result | Log |
+|---|---|---|
+| DCCM `0xF004_0000` | **PASS** — `dccm_rb=5a5a5678` exact round-trip, `def=0 bus_err=0` so never touched the AHB fabric | `P2_TB2_RESULT: PASS` |
+| ICCM `0xEE00_0000` | **FAIL** — store went out the external LSU port, claimed by `ahb_default_slave`, `def=1 bus_err=2`, trap parked, `TIMEOUT FAIL` | `P2_TB2_RESULT: TIMEOUT FAIL` |
+
+Not a permission issue. ICCM is served by `el2_ifu_iccm_mem` and driven by the
+**IFU** (`el2_ifu.sv:149-152`); there is no LSU data route to it, so a C access
+falls through to the external bus. DCCM is served by `el2_lsu_dccm_mem` from the
+**LSU**, so it works. No PMP or MRAC setting changes this.
+
+**Effect on this plan:** MEM-11 (DCCM) is unblocked and becomes a real test.
+**MEM-10 (ICCM) is dropped** and reclassified **BLOCKED — RTL/ARCH**. The
+steady-state assertion for `0xEE00_0000` is the opposite of a memory test: a C
+access to that range must be documented as routing to the ERROR slave, and that
+is covered by BUS-05/06/07.
+
+Phase 0 also **empirically confirmed** the imprecise-exception behaviour in
+§5.3.1 (the ICCM run trapped and parked), and **validated decision D1 twice
+over**: the ICCM run failed the `def`/`bus_err` equalities, and the DCCM run
+passed `P2_TB2_RESULT: PASS` but failed `AHB_RW_MONITOR` on the *minimum*
+activity thresholds (`dmem_rd=9 < 16`) simply because a short probe image makes
+fewer DMEM accesses than fw0. D1 therefore needs expected counts for the error
+counters **and** per-variant minimums for the activity counters.
+
+The original Phase 0 text is preserved below for traceability.
+
+---
+
+# 3-original. Phase 0 — ICCM/DCCM permission spike (superseded by §3 above)
 
 **Purpose.** Resolve the open question the plan is gated on: are ICCM and DCCM
 actually accessible from user-mode C? This is genuinely uncertain — ICCM/DCCM
