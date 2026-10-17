@@ -76,6 +76,23 @@ Verbatim from `build/sim/fw0/sim.log`:
 [TB] AHB_RW_MONITOR: PASS (mailbox reached; thresholds imem_rd>=8 dmem_rd>=16 dmem_wr>=16 bus_err==0 def==0)
 ```
 
+> **CORRECTION 2026-10-17 (Phase 1 of the C test suite).** The counts above were
+> the pre-Phase-1 baseline. `sw/src/startup.S` now begins with a three-instruction
+> MRAC prologue (`li t0,8` / `csrw 0x7c0,t0` / `fence.i`) so MMIO polls are not
+> swallowed by the LSU load buffer. That shifts the fw0 figures to:
+>
+> ```
+> [90685000] P2_TB2_RESULT: PASS (P2 program ran through project fabric)
+> [TB] AHB_CYCLES imem_rd=2417 imem_wr=0 dmem_rd=382 dmem_wr=164
+> [TB] AHB_CYCLES uart_rd=0 uart_wr=0 def=0 bus_err=0 ifu_offtarget=0
+> [TB] AHB_RW_MONITOR: PASS (mailbox reached; thresholds imem_rd>=8 dmem_rd>=16 dmem_wr>=16 bus_err==0 def==0)
+> ```
+>
+> `dmem_wr=164` is unchanged and `def=0 bus_err=0` still hold, so this is the
+> prologue's instruction-fetch and pipeline cost, not a behavioural regression.
+> Verified deterministic across repeated runs. fw0 performs no MMIO, so the MRAC
+> write is inert for it. See `doc/Phase1_Test_Framework_Record.md`.
+
 Independently re-verified on disk: `firmware.elf` 12312 B, `imem.mem`
 2040 B, `dmem.mem` 22 B, `firmware.ihex` 1912 B — all match the quoted gate
 values in `doc/Fw0_C_Toolchain_Build_and_Gate_Record.md`.

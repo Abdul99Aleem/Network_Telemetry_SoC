@@ -74,7 +74,7 @@ MON_EXPECT_PLUSARGS := \
     +min_dmem_wr=$(MIN_DMEM_WR)
 
 .PHONY: all veer-config rtl sim run verdi wave clean help \
-        test-fw0 test-spike-dccm test-spike-iccm
+        test-fw0 test-spike-dccm test-spike-iccm test-suite test-suite-negative
 .DEFAULT_GOAL := all
 
 all: sim
@@ -192,6 +192,21 @@ test-spike-iccm:
 	    SW_BUILD=$(SW_DIR)/build/spike_iccm \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=1 MIN_DMEM_WR=1 \
 	    EXPECT_DEF=1 EXPECT_BUSERR=2
+
+# C test suite (Phase 1) — must PASS. Image built with MAIN_SRC=tests/test_main.c.
+test-suite:
+	@$(MAKE) run \
+	    SW_BUILD=$(SW_DIR)/build/suite \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0
+
+# Negative control — same image plus -DTEST_NEGATIVE_CONTROL, so the suite must
+# FAIL. Proves the assertion machinery and the mailbox FAIL path both work.
+test-suite-negative:
+	@$(MAKE) run \
+	    SW_BUILD=$(SW_DIR)/build/suite_neg \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0
 
 # ---------------------------------------------------------------------------
 # Verdi (plan §5.3 — the waveform half of the evidence)

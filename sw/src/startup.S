@@ -4,6 +4,7 @@
  * Desc    : Reset / C runtime bring-up for the p2_soc snapshot.
  *
  *           Spec §22 D8 order, frozen:
+ *             0. set MRAC       = side-effect bit for 0x1xxx_xxxx   (Phase 1)
  *             1. set sp        = __stack_top        (0x0001_8000)
  *             2. set mtvec     = trap_handler
  *             3. copy .data    LMA (IMEM) -> VMA (DMEM)
@@ -12,6 +13,10 @@
  *             6. on return, write the Phase-2 PASS signature to the DMEM
  *                mailbox (tb/tb_veer_p2_soc.sv:300 fires unchanged)
  *             7. park
+ *
+ *           Step 0 is additive: it was added with the C test suite (Phase 1)
+ *           and is inert for fw0, which performs no MMIO. Steps 1-7 are the
+ *           frozen D8 order and the mailbox byte contract is unchanged.
  *
  *           Verdi: .text.start is the instruction fetch the SoC performs on
  *           the very first AHB cycle after reset is released.
@@ -22,6 +27,23 @@
     .globl  _start
     .type   _start, @function
 _start:
+    /* ---- 0. MRAC: mark peripheral regions side-effecting ----------------
+     * VeeR's LSU load buffer forwards a repeated load of the same address, so
+     * polling a status register (UART LSR) never reaches the bus unless the
+     * region is marked side-effecting. scripts/p3_uart_prog_gen.py:28-33
+     * documents this for the Python-generated UART program; MRAC has no
+     * hardware reset value, so it must be written explicitly on every boot.
+     *
+     * CSR 0x7C0 packs {side_effect, cacheable} pairs addressed by
+     * {addr[31:28], 1'b1}. The SoC peripheral window is 0x1xxx_xxxx, which is
+     * MRAC[3], so side_effect for it is 1<<3 = 0x0000_0008. Bit 8 (cacheable
+     * for the same region) is deliberately left clear.
+     *
+     * fw0 performs no MMIO, so this is inert for it; the suite needs it. */
+    li      t0, 0x00000008               /* MRAC[3] = side_effect */
+    csrw    0x7c0, t0
+    fence.i                                /* retire any fetch already in flight */
+
     /* ---- 1. stack pointer (top of DMEM, 16-byte aligned by construction) */
     la      sp, __stack_top
 

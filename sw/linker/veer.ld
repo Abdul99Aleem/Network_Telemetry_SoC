@@ -60,6 +60,34 @@ SECTIONS
         __data_end = .;
     } > DMEM AT> IMEM
 
+    /* ---- test framework ---------------------------------------------------
+     * Phase 1 of the C test suite plan. Two sections, both load-time inert for
+     * the image: .test_list is const data (it does land in imem.mem, which is
+     * exactly why .data does too), .results is NOLOAD and costs no image bytes.
+     *
+     * .results is placed FIRST in DMEM so it lands at a fixed 0x0001_0010 and
+     * the testbench can walk it by a known absolute address, pushing .data,
+     * .bss and the stack above it. __stack_top is unchanged because MEMORY is
+     * untouched — see the ASSERT below.
+     */
+    .results (NOLOAD) :
+    {
+        . = ALIGN(4);
+        __results_start = .;
+        KEEP(*(.results .results.*))
+        . = ALIGN(4);
+        __results_end = .;
+    } > DMEM
+
+    .test_list :
+    {
+        . = ALIGN(4);
+        __test_list_start = .;
+        KEEP(*(.test_list))
+        . = ALIGN(4);
+        __test_list_end = .;
+    } > IMEM
+
     __data_load   = LOADADDR(.data);
     __data_size   = SIZEOF(.data);
 
@@ -76,6 +104,14 @@ SECTIONS
     } > DMEM
 
     __bss_size = SIZEOF(.bss);
+
+    /* ---- end of the loaded image in IMEM ---------------------------------
+     * Highest IMEM address occupied by .data's load image, i.e. the first
+     * byte beyond everything $readmemh will have written. A memory test must
+     * begin scratch at or above this, or it overwrites its own code. Gate G15
+     * checks the arithmetic; nothing in this script can enforce it for a raw
+     * pointer store, so the symbol is exported for the test code to read. */
+    __imem_image_end = __data_load + __data_size;
 
     /* ---- stack: grows down from the top of DMEM ------------------------ */
     __stack_top  = ORIGIN(DMEM) + LENGTH(DMEM);   /* 0x0001_8000 */
@@ -125,3 +161,36 @@ ASSERT(!((ADDR(.text)   >= 0xEE000000 && ADDR(.text)   < 0xEE010000) ||
          (ADDR(.data)   >= 0xF0040000 && ADDR(.data)   < 0xF0050000) ||
          (__bss_start   >= 0xF0040000 && __bss_start   < 0xF0050000)),
        "a section landed in an ICCM/DCCM core-local region (Mode 1 violation)")
+
+/* ================= test-framework guardrails (Phase 1) ====================
+ *
+ * All four are guarded on SIZEOF(...) > 0 because fw0 links no .results and no
+ * .test_list at all, and an empty output section leaves its boundary symbols
+ * undefined (which ld resolves to 0 and would trip a bare comparison).
+ */
+
+/* .results must sit at the fixed base the testbench hard-codes, and inside DMEM. */
+ASSERT(SIZEOF(.results) == 0 ||
+       (__results_start == 0x00010010 && __results_end <= 0x00018000),
+       ".results must begin at the fixed RESULTS_BASE 0x00010010 and stay in DMEM")
+
+/* The reservation is a compile-time constant in sw/include/test.h:
+ *   RESULTS_HDR_BYTES 28 + RESULTS_MAX_ENT 64 * RESULTS_ENT_BYTES 8 = 540 bytes.
+ * ld cannot see those C macros, so the literal is repeated here. If test.h is
+ * ever changed, this figure must be changed with it — it exists to keep the
+ * fixed reservation comfortably below the 32 KB DMEM ceiling, which the
+ * SIZEOF check above already proves for the real section. */
+ASSERT((28 + 64 * 8) <= 0x00007F00,
+       "result table reservation too large for DMEM below the stack")
+
+/* The whole test registry must fit inside IMEM, alongside .text/.rodata. */
+ASSERT(SIZEOF(.test_list) == 0 || __test_list_end <= 0x00008000,
+       ".test_list escapes IMEM")
+
+/* The loaded image must leave room for a memory-test scratch region, so a
+ * test can never grow into its own code. Gate G15 re-checks the same
+ * arithmetic at build time with the value baked into the shell.
+ * NOTE: a single string literal — GNU ld does not concatenate adjacent
+ * literals in an ASSERT message, so this must not be wrapped. */
+ASSERT(__imem_image_end + 0x1000 <= 0x00008000,
+       "loaded image leaves less than 4 KB of IMEM scratch for test scratch")

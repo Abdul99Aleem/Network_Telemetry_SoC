@@ -41,15 +41,41 @@ BUILD   ?= build
 # doc/Complete_Updated_C_Peripheral_and_Memory_Test_Suite_Plan.md overrides
 # this to build the ICCM/DCCM access spike into its own BUILD dir without
 # disturbing the fw0 artifacts, e.g.
-#     make -C sw BUILD=build/spike MAIN_SRC=src/spike.c all
+#     make -C sw BUILD=build/spike MAIN_SRC=probes/spike.c all
 # Later phases use the same hook for -DTEST_SELECT_* variants (§6.1).
 MAIN_SRC ?= src/main.c
 
 # Extra flags appended to CFLAGS. Used by the Phase 0 spike to select a single
 # probe region (-DSPIKE_ONLY_DCCM / -DSPIKE_ONLY_ICCM): a faulting access traps
-# and startup.S parks forever, so ICCM and DCCM cannot share one run. Later
-# phases carry -DTEST_SELECT_* through the same hook (§6.1).
+# and startup.S parks forever, so ICCM and DCCM cannot share one run. Also
+# carries -DTEST_SELECT_* / -DTEST_NEGATIVE_CONTROL for the suite (Phase 1).
 EXTRA_CFLAGS ?=
+
+# Which sources are compiled in.
+#
+#   MAIN_SRC defaults to src/main.c  -> the fw0 build: src/*.c only.
+#   MAIN_SRC in tests/                -> the suite build: src/lib.c + tests/*.
+#                                         src/main.c is dropped, because it is
+#                                         fw0's own main() and would collide.
+#   MAIN_SRC in probes/               -> a standalone probe: src/lib.c + it.
+#
+# probes/ is never globbed, so a probe is only ever built when named
+# explicitly. Every variant lands in its own BUILD dir and therefore cannot
+# disturb the proven fw0 artifacts in sw/build/.
+SRCS_BASE := $(sort $(wildcard src/*.c))
+
+ifneq ($(findstring tests/,$(MAIN_SRC)),)
+    SRCS := $(filter-out src/main.c src/lib.c,$(SRCS_BASE)) $(sort $(wildcard tests/*.c))
+else ifneq ($(findstring probes/,$(MAIN_SRC)),)
+    SRCS := $(filter-out src/main.c src/lib.c,$(SRCS_BASE)) $(MAIN_SRC)
+else
+    SRCS := $(filter-out src/lib.c,$(SRCS_BASE))
+endif
+
+# lib.o is appended explicitly below so it always carries LIBCFLAGS.
+OBJS := $(BUILD)/startup.o \
+        $(patsubst %.c,$(BUILD)/%.o,$(notdir $(SRCS))) \
+        $(BUILD)/lib.o
 
 # Region bases — must stay in lock-step with sw/linker/veer.ld MEMORY and
 # rtl/soc_top.sv address decode (spec §9.1).
@@ -92,13 +118,17 @@ LDFLAGS := \
 # ---------------------------------------------------------------------------
 # Objects
 # ---------------------------------------------------------------------------
-OBJS := $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/lib.o
-MAIN_OBJ := $(BUILD)/main.o
-
-.PHONY: all elf dis ihex mem verify-images inspect manifest clean help
+.PHONY: all elf firmware dis ihex mem verify-images inspect manifest clean help
 .DEFAULT_GOAL := all
 
 all: elf mem manifest
+
+# The root Makefile delegates `make firmware` here (root Makefile:39), but this
+# file only ever defined `elf`, so the documented `make` / `make all` entry
+# point failed with "No rule to make target 'firmware'" on a clean tree —
+# reproduced on HEAD before Phase 1 touched anything. Alias kept rather than
+# editing the root Makefile, so both spellings work.
+firmware: elf
 
 help:
 	@echo "sw/ targets (gates = plan §4.2 G1-G13, spec §16 L1-L4):"
@@ -106,7 +136,7 @@ help:
 	@echo "  mem      -> imem.mem + dmem.mem + firmware.ihex"
 	@echo "             runs verify-images              [G8, G9, G10]"
 	@echo "  dis      -> $(BUILD)/firmware.dis"
-	@echo "  inspect  -> ELF/section/symbol gates        [G1-G7, G11]"
+	@echo "  inspect  -> ELF/section/symbol gates   [G1-G7, G11, G14, G15]"
 	@echo "  manifest -> $(BUILD)/manifest.txt           [G12]"
 	@echo "  clean    -> remove $(BUILD)/"
 
@@ -125,9 +155,18 @@ $(BUILD)/firmware.elf: $(OBJS) $(LDSCRIPT) | $(BUILD)
 $(BUILD)/startup.o: src/startup.S | $(BUILD)
 	$(CC) $(ASFLAGS) -c $< -o $@
 
-$(MAIN_OBJ): $(MAIN_SRC) include/soc.h | $(BUILD)
+# One rule per tree: objects are keyed on basename, and the trees hold no
+# colliding names (src/lib.c vs tests/* vs probes/*).
+$(BUILD)/%.o: src/%.c include/soc.h include/test.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/%.o: tests/%.c include/soc.h include/test.h | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/%.o: probes/%.c include/soc.h include/test.h | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# src/lib.c alone carries the loop-distribute guard (spec §8.4).
 $(BUILD)/lib.o: src/lib.c | $(BUILD)
 	$(CC) $(LIBCFLAGS) -c $< -o $@
 
@@ -154,15 +193,29 @@ mem: $(BUILD)/imem.mem $(BUILD)/dmem.mem $(BUILD)/firmware.ihex verify-images
 # Gates G8/G9/G10 (plan §4.2) — the images must be $readmemh-legal.
 verify-images: $(BUILD)/imem.mem $(BUILD)/dmem.mem
 	@ok=1; \
-	echo "[SW] ==== G8  imem.mem / dmem.mem / firmware.ihex non-empty ==="; \
-	for f in $(BUILD)/imem.mem $(BUILD)/dmem.mem $(BUILD)/firmware.ihex; do \
+echo "[SW] ==== G8  imem.mem / dmem.mem / firmware.ihex consistent ====="; \
+	echo "[SW]     imem.mem and firmware.ihex must always exist and be non-empty"; \
+	for f in $(BUILD)/imem.mem $(BUILD)/firmware.ihex; do \
 	  if [ ! -s $$f ]; then echo "[SW] FAIL G8: $$f missing or empty"; ok=0; continue; fi; \
 	  printf '[SW]     %-24s %6s bytes\n' "$$(basename $$f)" "$$(wc -c < $$f)"; \
 	done; \
+	dsize=$$($(READELF) -SW $(BUILD)/firmware.elf \
+	          | awk '{for(i=1;i<=NF;i++) if($$i==".data"){print strtonum("0x" $$(i+4)); exit}}'); \
+	if [ -s $(BUILD)/dmem.mem ]; then \
+	  printf '[SW]     %-24s %6s bytes\n' "dmem.mem" "$$(wc -c < $(BUILD)/dmem.mem)"; \
+	elif [ "$$dsize" -gt 0 ]; then \
+	  echo "[SW] FAIL G8: .data is 0x$$dsize bytes but dmem.mem is empty"; ok=0; \
+	else \
+	  echo "[SW]     dmem.mem              empty by design (.data size 0)"; \
+	fi; \
 	[ $$ok -eq 1 ] || exit 1; \
 	echo "[SW] PASS G8"; \
 	echo "[SW] ==== G9  every @record inside the 32 KB dense array ====="; \
 	for f in $(BUILD)/imem.mem $(BUILD)/dmem.mem; do \
+	  if [ ! -s $$f ]; then \
+	    printf '[SW]     %-10s empty by design (no .data overlay)\n' "$$(basename $$f)"; \
+	    continue; \
+	  fi; \
 	  first=$$(grep -m1 '^@' $$f || true); \
 	  if [ -z "$$first" ]; then echo "[SW] FAIL G9: $$f has no @record"; ok=0; continue; fi; \
 	  if [ "$$(basename $$f)" = "imem.mem" ] && [ "$$first" != "@00000000" ]; then \
@@ -178,6 +231,20 @@ verify-images: $(BUILD)/imem.mem $(BUILD)/dmem.mem
 	  done < <(grep '^@' $$f); \
 	  printf '[SW]     %-10s first=%-14s @records=%s\n' "$$(basename $$f)" "$$first" "$$(grep -c '^@' $$f)"; \
 	done; \
+	echo "[SW] ==== G9  image covers every section the CPU must read ==="; \
+	tl_start=$$($(NM) $(BUILD)/firmware.elf | awk '$$3=="__test_list_start"{print $$1}'); \
+	if [ -n "$$tl_start" ]; then \
+	  tl_size=$$($(READELF) -SW $(BUILD)/firmware.elf \
+	             | awk '{for(i=1;i<=NF;i++) if($$i==".test_list"){print strtonum("0x" $$(i+4)); exit}}'); \
+	  have=$$(awk -v want="$$tl_start" \
+	            'toupper(substr($$1,2))==toupper(want){f=1;next} f{n+=NF} END{print n+0}' \
+	            $(BUILD)/imem.mem); \
+	  echo "[SW]     .test_list at $$tl_start, $$tl_size bytes, image holds $$have"; \
+	  if [ "$$have" -ne "$$tl_size" ]; then \
+	    echo "[SW] FAIL G9: .test_list is not fully present in imem.mem"; \
+	    echo "[SW]     ($$have of $$tl_size bytes) — the registry would read as zeros"; ok=0; \
+	  fi; \
+	fi; \
 	[ $$ok -eq 1 ] || exit 1; \
 	echo "[SW] PASS G9"; \
 	echo "[SW] ==== G10 byte-per-token, LF, never Intel HEX ============="; \
@@ -198,9 +265,17 @@ verify-images: $(BUILD)/imem.mem $(BUILD)/dmem.mem
 # .data is emitted here from its **LMA** (its bytes really do live in IMEM),
 # which is exactly what startup.S copies out of; including it is mandatory or
 # the .data LMA -> VMA copy would read uninitialised SRAM.
+#
+# .test_list must be included for the same reason. The test registry is a
+# separate output section (veer.ld), so the frozen --only-section list left it
+# out of imem.mem entirely: the suite ELF put it at 0x56c..0x584 while the
+# image stopped at 0x56a, so every tc_*.name and tc_*.fn would have read as
+# zero in hardware and the first TEST_CASE call would have jumped to NULL.
+# Gate G9 now proves the image covers it.
 $(BUILD)/imem.mem: $(BUILD)/firmware.elf
 	$(OBJCOPY) -O verilog --verilog-data-width 1 \
 	    --only-section=.text --only-section=.rodata --only-section=.data \
+	    --only-section=.test_list \
 	    --change-addresses=-$(IMEM_BASE) \
 	    $< $@
 	@$(CRLF_FIX) $@
@@ -294,20 +369,59 @@ inspect: $(BUILD)/firmware.elf $(BUILD)/imem.mem $(BUILD)/dmem.mem
 	@echo "[SW]     aborts with 'libgcc.a file class ELFCLASS64 incompatible'"
 	@echo "[SW] PASS G7"
 	@echo "[SW] ==== G11 imem.mem head == first instruction ==============="
-	@bytes=$$(grep -m1 -A1 '^@00000000' $(BUILD)/imem.mem | tail -1 | awk '{print $$1, $$2, $$3, $$4}'); \
-	 word=$$($(OBJDUMP) -d --start-address=0 --stop-address=4 $< 2>/dev/null \
+	@# The first instruction need not be 4 bytes: with -march=..._c the
+	@# assembler emits 16-bit compressed forms, so `li t0,8` at _start+0 is
+	@# 2 bytes and a naive 4-byte image/objdump comparison fails on a correct
+	@# image (seen once Phase 1 put `li t0,8` first for MRAC). Determine the
+	@# instruction's width from the objdump token and compare only that many
+	@# bytes: 4 hex chars = 2 bytes, 8 hex chars = 4 bytes.
+	@# objdump prints lowercase hex, so the image word is lowercased before
+	@# the compare. Otherwise the test is a case test that passes only when
+	@# the encoding happens to contain no letters.
+	@word=$$($(OBJDUMP) -d --start-address=0 --stop-address=4 $< 2>/dev/null \
 	         | awk '/^ +[0-9a-f]+:/{print $$2; exit}'); \
+	 wlen=$${#word}; \
+	 if [ $$wlen -le 4 ]; then nb=2; else nb=4; fi; \
+	 bytes=$$(grep -m1 -A1 '^@00000000' $(BUILD)/imem.mem | tail -1 \
+	          | awk '{print $$1, $$2, $$3, $$4}'); \
 	 read -r b0 b1 b2 b3 <<< "$$bytes"; \
-	 img=$$(printf '%02X%02X%02X%02X' 0x$$b3 0x$$b2 0x$$b1 0x$$b0); \
-	 echo "[SW]     objdump word  : $$word"; \
+	 if [ $$nb -eq 2 ]; then img=$$(printf '%02X%02X' 0x$$b1 0x$$b0); \
+	 else img=$$(printf '%02X%02X%02X%02X' 0x$$b3 0x$$b2 0x$$b1 0x$$b0); fi; \
+	 img=$$(echo "$$img" | tr 'A-F' 'a-f'); \
+	 echo "[SW]     objdump word  : $$word ($$(( nb * 8 ))-bit instruction)"; \
 	 echo "[SW]     imem.mem word : $$img   (bytes: $$bytes)"; \
 	 if [ "$$img" != "$$word" ]; then \
 	   echo "[SW] FAIL G11: image head != _start encoding"; exit 1; fi
 	@echo "[SW] PASS G11"
+	@echo "[SW] ==== G14 no undefined symbols (freestanding, no libgcc) ====="
+	@# Check the LINKED ELF, not the objects: an object legitimately shows
+	@# undefined __bss_start/__data_load/main/... because those are supplied
+	@# by the linker script and by other objects. What must be empty is the
+	@# resolved image — anything left undefined there would mean -nostdlib
+	@# let an unbacked reference through, which is exactly what happened the
+	@# first time a 64-bit division was introduced (__udivdi3).
+	@undef=$$($(NM) -u $< 2>/dev/null | grep -v '^$$' || true); \
+	 if [ -n "$$undef" ]; then \
+	   echo "[SW] FAIL G14: undefined symbols survived the -nostdlib link:"; \
+	   echo "$$undef" | sed 's/^/[SW]     /'; \
+	   echo "[SW]     64-bit div/mod needs __udivdi3, which does not exist here"; \
+	   exit 1; fi
+	@echo "[SW]     nm -u on the linked ELF is empty"
+	@echo "[SW] PASS G14"
+	@echo "[SW] ==== G15 IMEM image + scratch safety ======================="
+	@end=$$($(NM) $< | awk '$$3=="__imem_image_end"{print $$1}'); \
+	 if [ -z "$$end" ]; then echo "[SW] FAIL G15: __imem_image_end not exported"; exit 1; fi; \
+	 dec=$$(( 0x$$end )); \
+	 echo "[SW]     __imem_image_end = $$end ($$dec)"; \
+	 if [ $$dec -gt 24576 ]; then \
+	   echo "[SW] FAIL G15: loaded image leaves less than 4 KB of IMEM scratch"; \
+	   echo "[SW]     (a memory test would overwrite its own code)"; exit 1; fi
+	@echo "[SW]     >= 4 KB of IMEM remains below the 32 KB ceiling for test scratch"
+	@echo "[SW] PASS G15"
 	@echo "[SW] ---- informational: size ----------------------------------"
 	@$(SIZE) $<
-	@echo "[SW] inspect OK  (G1-G7, G11 pass here; G8-G10 run under 'make mem';"
-	@echo "[SW]             G12 under 'make manifest'; G13 checked at sim time)"
+	@echo "[SW] inspect OK  (G1-G7, G11, G14, G15 pass here; G8-G10 run under"
+	@echo "[SW]             'make mem'; G12 under 'make manifest'; G13 at sim time)"
 
 manifest: $(BUILD)/firmware.elf $(BUILD)/imem.mem $(BUILD)/dmem.mem
 	@echo "[SW] ==== G12 manifest (spec §17) ============================="

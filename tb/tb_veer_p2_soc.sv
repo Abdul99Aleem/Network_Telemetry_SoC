@@ -294,6 +294,72 @@ module tb_veer_p2_soc
         $display("[%0t] CPU running, reset_vec=0x%h", $time, reset_vector);
     end
 
+    // ================= C test-suite result table dump (Phase 1) ==========
+    // Reads the .results NOLOAD block the firmware runner fills in, by absolute
+    // DMEM address. Mirrors sw/include/test.h:
+    //   [0x00] magic 'T''E''S''T'  [0x04] ntests  [0x08] npass  [0x0C] nfail
+    //   [0x10] first_fail_idx       [0x14] first_fail_code
+    //   [0x18] first_fail_got       [0x1C] first_fail_want
+    // then ntests entries of { const char *name; uint32 code; } = 8 bytes each.
+    //
+    // For a non-suite image the block is absent, so magic reads as 0 and this
+    // prints one "no result table" line and returns. fw0 therefore keeps its
+    // log shape apart from one extra line.
+    task automatic dump_test_results;
+        int unsigned magic;
+        int unsigned ntests, npass, nfail, ff_idx, ff_code, ff_got, ff_want;
+        int unsigned base;
+        reg [31:0] nameptr;
+        begin
+            // u_dmem.mem is indexed by OFFSET from the DMEM base, not by
+            // absolute address: ahb_sram.mem is SIZE_BYTES deep and
+            // BASE_ADDR=0x0001_0000 is unused by the array (ahb_sram.sv:43).
+            // So RESULTS_BASE 0x0001_0010 is array index 0x10. Indexing with
+            // the absolute address reads out of bounds and yields X -- which is
+            // exactly what happened before this was corrected.
+            base   = 32'h0001_0010 - 32'h0001_0000;   // == 0x10
+            magic  = {u_soc.u_dmem.mem[base+3], u_soc.u_dmem.mem[base+2],
+                      u_soc.u_dmem.mem[base+1], u_soc.u_dmem.mem[base+0]};
+            if (magic !== 32'h5453_4553) begin
+                $display("[%0t] TEST_RESULT: none (no .results table in this image)", $time);
+                // Always print the raw header words so "magic missing" is a
+                // diagnosable log line rather than a dead end.
+                for (int unsigned w = 0; w < 8; w++)
+                    $display("[%0t] TEST_RAW[0x%04h] = %08h", $time, base + w*4,
+                             {u_soc.u_dmem.mem[base+w*4+3], u_soc.u_dmem.mem[base+w*4+2],
+                              u_soc.u_dmem.mem[base+w*4+1], u_soc.u_dmem.mem[base+w*4+0]});
+            end else begin
+                ntests  = {u_soc.u_dmem.mem[base+7], u_soc.u_dmem.mem[base+6],
+                           u_soc.u_dmem.mem[base+5], u_soc.u_dmem.mem[base+4]};
+                npass   = {u_soc.u_dmem.mem[base+11], u_soc.u_dmem.mem[base+10],
+                           u_soc.u_dmem.mem[base+ 9], u_soc.u_dmem.mem[base+ 8]};
+                nfail   = {u_soc.u_dmem.mem[base+15], u_soc.u_dmem.mem[base+14],
+                           u_soc.u_dmem.mem[base+13], u_soc.u_dmem.mem[base+12]};
+                ff_idx  = {u_soc.u_dmem.mem[base+19], u_soc.u_dmem.mem[base+18],
+                           u_soc.u_dmem.mem[base+17], u_soc.u_dmem.mem[base+16]};
+                ff_code = {u_soc.u_dmem.mem[base+23], u_soc.u_dmem.mem[base+22],
+                           u_soc.u_dmem.mem[base+21], u_soc.u_dmem.mem[base+20]};
+                ff_got  = {u_soc.u_dmem.mem[base+27], u_soc.u_dmem.mem[base+26],
+                           u_soc.u_dmem.mem[base+25], u_soc.u_dmem.mem[base+24]};
+                ff_want = {u_soc.u_dmem.mem[base+31], u_soc.u_dmem.mem[base+30],
+                           u_soc.u_dmem.mem[base+29], u_soc.u_dmem.mem[base+28]};
+                $display("[%0t] TEST_RESULT: ntests=%0d npass=%0d nfail=%0d",
+                         $time, ntests, npass, nfail);
+                $display("[%0t] TEST_RESULT: first_fail idx=%0d code=%0d got=%0h want=%0h",
+                         $time, ff_idx, ff_code, ff_got, ff_want);
+                for (int unsigned i = 0; i < ntests; i++) begin
+                    int unsigned e = base + 32 + i*8;
+                    nameptr = {u_soc.u_dmem.mem[e+3], u_soc.u_dmem.mem[e+2],
+                               u_soc.u_dmem.mem[e+1], u_soc.u_dmem.mem[e+0]};
+                    $display("[%0t] TEST_CASE[%0d] name_ptr=0x%08h code=%0d",
+                             $time, i, nameptr,
+                             {u_soc.u_dmem.mem[e+7], u_soc.u_dmem.mem[e+6],
+                              u_soc.u_dmem.mem[e+5], u_soc.u_dmem.mem[e+4]});
+                end
+            end
+        end
+    endtask
+
     // PASS monitor: DMEM[2]==0xFF with expected record contents.
     reg done = 0;
     always @(posedge core_clk) begin
@@ -305,6 +371,7 @@ module tb_veer_p2_soc
                       u_soc.u_dmem.mem[ 9], u_soc.u_dmem.mem[ 8]},
                      {u_soc.u_dmem.mem[15], u_soc.u_dmem.mem[14],
                       u_soc.u_dmem.mem[13], u_soc.u_dmem.mem[12]});
+            dump_test_results();
             if (u_soc.u_dmem.mem[0] === 8'h50 &&
                 u_soc.u_dmem.mem[1] === 8'h32 &&
                 u_soc.u_dmem.mem[4] === 8'h50 &&
@@ -363,6 +430,7 @@ module tb_veer_p2_soc
                   u_soc.u_dmem.mem[ 9], u_soc.u_dmem.mem[ 8]},
                  {u_soc.u_dmem.mem[15], u_soc.u_dmem.mem[14],
                   u_soc.u_dmem.mem[13], u_soc.u_dmem.mem[12]});
+        dump_test_results();
         $display("[%0t] P2_TB2_RESULT: TIMEOUT FAIL", $time);
         $finish;
     end
