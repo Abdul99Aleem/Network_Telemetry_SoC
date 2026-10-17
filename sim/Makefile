@@ -73,8 +73,17 @@ MON_EXPECT_PLUSARGS := \
     +min_dmem_rd=$(MIN_DMEM_RD) \
     +min_dmem_wr=$(MIN_DMEM_WR)
 
+# Runtime testbench options, appended per target.
+#   +expect_uart  require and verify the serial transcript (suite only; fw0
+#                 emits none, so requiring one would fail a proven regression)
+#   +uart_corrupt deliberately corrupt the first captured byte, to prove the
+#                 UART gate rejects a wrong payload
+#   +wave         emit an FSDB; omitted by default so routine runs stay light
+TB_PLUSARGS ?=
+
 .PHONY: all veer-config rtl sim run verdi wave clean help \
-        test-fw0 test-spike-dccm test-spike-iccm test-suite test-suite-negative
+        test-fw0 test-spike-dccm test-spike-iccm test-suite test-suite-negative \
+        test-suite-uart-corrupt
 .DEFAULT_GOAL := all
 
 all: sim
@@ -147,8 +156,8 @@ run:
 	    { echo "[SIM] FAIL: $(SW_BUILD)/imem.mem missing — run 'make -C sw mem'"; exit 1; }
 	@cp $(SW_BUILD)/imem.mem $(FW_HEX)
 	@echo "[SIM] image: $(SW_BUILD)/imem.mem ($$(wc -c < $(SW_BUILD)/imem.mem) bytes) -> $(FW_HEX)"
-	@echo "[SIM] expect: $(MON_EXPECT_PLUSARGS)"
-	cd $(WORK) && ./simv $(MON_EXPECT_PLUSARGS) -l $(WORK)/sim.log
+	@echo "[SIM] expect: $(MON_EXPECT_PLUSARGS) $(TB_PLUSARGS)"
+	cd $(WORK) && ./simv $(MON_EXPECT_PLUSARGS) $(TB_PLUSARGS) -l $(WORK)/sim.log
 	@echo "[SIM] ---- gate: plan §5.2, both tokens required ----"
 	@grep -q "P2_TB2_RESULT: PASS" $(WORK)/sim.log || \
 	    { echo "[SIM] FAIL: no 'P2_TB2_RESULT: PASS'"; \
@@ -159,11 +168,26 @@ run:
 	      grep -n "AHB_RW_MONITOR\|AHB_CYCLES\|FAIL reason" $(WORK)/sim.log; exit 1; }
 	@echo "[SIM] PASS  AHB_RW_MONITOR: PASS   (plan §5.2 — read/write proof)"
 	@grep -n "AHB_CYCLES\|AHB_RW_MONITOR\|P2_TB2_RESULT" $(WORK)/sim.log
+	@# When the target asked for a transcript, its absence is a failure.
+	@# A missing UART_CHECK_RESULT means the bench never reached the check,
+	@# which must not be mistaken for a pass.
+	@case "$(TB_PLUSARGS)" in *+expect_uart*) \
+	    grep -q "UART_CHECK_RESULT: \(PASS\|FAIL\)" $(WORK)/sim.log || \
+	    { echo "[SIM] FAIL: +expect_uart was set but no UART_CHECK_RESULT token"; \
+	      grep -n "UART" $(WORK)/sim.log; exit 1; };; \
+	  *) ;; esac
+	@case "$(TB_PLUSARGS)" in *+expect_uart*) \
+	    grep -q "UART_CHECK_RESULT: PASS" $(WORK)/sim.log || \
+	    { echo "[SIM] FAIL: UART_CHECK_RESULT is not PASS"; \
+	      grep -n "UART_CHECK" $(WORK)/sim.log; exit 1; };; \
+	  *) ;; esac
 	@echo "[SIM] G13  firmware.ihex never reached the sim dir:"
 	@if ls $(WORK)/*.ihex >/dev/null 2>&1; then \
 	    echo "[SIM] FAIL G13: Intel HEX found in $(WORK)"; exit 1; \
 	 else echo "[SIM] PASS  no *.ihex in $(WORK)"; fi
-	@echo "[SIM] FSDB  $(WORK)/p2_veer_soc.fsdb"
+	@case "$(TB_PLUSARGS)" in *+wave*) echo "[SIM] FSDB  $(WORK)/p2_veer_soc.fsdb (+wave)";; \
+	  *) rm -f $(WORK)/p2_veer_soc.fsdb; \
+	     echo "[SIM] FSDB  none (pass TB_PLUSARGS=+wave to enable)";; esac
 	@echo "[SIM] DONE"
 
 # ---------------------------------------------------------------------------
@@ -193,12 +217,15 @@ test-spike-iccm:
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=1 MIN_DMEM_WR=1 \
 	    EXPECT_DEF=1 EXPECT_BUSERR=2
 
-# C test suite (Phase 1) — must PASS. Image built with MAIN_SRC=tests/test_main.c.
+# C test suite (Phase 2) — must PASS. Image built with MAIN_SRC=tests/test_main.c.
+# +expect_uart: the suite reports over the serial line, so the transcript is
+# decoded and cross-checked against the DMEM table.
 test-suite:
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/suite \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
-	    EXPECT_DEF=0 EXPECT_BUSERR=0
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS=+expect_uart
 
 # Negative control — same image plus -DTEST_NEGATIVE_CONTROL, so the suite must
 # FAIL. Proves the assertion machinery and the mailbox FAIL path both work.
@@ -206,7 +233,17 @@ test-suite-negative:
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/suite_neg \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
-	    EXPECT_DEF=0 EXPECT_BUSERR=0
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS=+expect_uart
+
+# Negative control for the UART gate itself: +uart_corrupt rewrites the first
+# captured byte, so UART_CHECK must FAIL and the run must exit non-zero.
+test-suite-uart-corrupt:
+	@$(MAKE) run \
+	    SW_BUILD=$(SW_DIR)/build/suite \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS="+expect_uart +uart_corrupt"
 
 # ---------------------------------------------------------------------------
 # Verdi (plan §5.3 — the waveform half of the evidence)

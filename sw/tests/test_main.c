@@ -36,6 +36,7 @@
 #include <stdint.h>
 #include "soc.h"
 #include "test.h"
+#include "uart.h"
 
 /* Supplied by the linker (sw/linker/veer.ld). */
 extern const test_case_t __test_list_start[];
@@ -126,6 +127,21 @@ static int t_dmem_roundtrip(void)
     return 0;
 }
 
+/* Phase 2: proves the UART really shifts bits out, by checking the status the
+ * transmitter reports once it is idle. This is the only status register the
+ * wrapper serves a real read for, so it is the only one that can be trusted.
+ * The actual byte-level check is done by the testbench, which decodes the line
+ * and cross-checks it against the DMEM table.
+ */
+static int t_uart_status(void)
+{
+    CHECK_EQ("uart/thre", UART_REG32(UART_OFF_LSR) & UART_LSR_THRE,
+             UART_LSR_THRE);
+    CHECK_EQ("uart/temt", UART_REG32(UART_OFF_LSR) & UART_LSR_TEMT,
+             UART_LSR_TEMT);
+    return 0;
+}
+
 #ifdef TEST_NEGATIVE_CONTROL
 /* Must fail, and the suite must therefore report FAIL. */
 static int t_negative_control(void)
@@ -138,9 +154,57 @@ static int t_negative_control(void)
 TEST_CASE(t_selftest)
 TEST_CASE(t_bss_is_zero)
 TEST_CASE(t_dmem_roundtrip)
+TEST_CASE(t_uart_status)
 #ifdef TEST_NEGATIVE_CONTROL
 TEST_CASE(t_negative_control)
 #endif
+
+/* ---------------------------------------------------------- serial report --
+ * Transcript format, mirrored by the parser in tb/tb_veer_p2_soc.sv:
+ *
+ *   SUITE_BEGIN
+ *   T<idx> <test-name> PASS|FAIL
+ *   ...
+ *   SUITE_END ntests=<n> npass=<p> nfail=<f> first_fail=<i> code=<c> \
+ *            got=0xXXXXXXXX want=0xXXXXXXXX
+ *
+ * The testbench does not string-compare this against a golden transcript; it
+ * parses the fields and cross-checks every one of them against the DMEM result
+ * table. That is what makes "UART and DMEM agree" a checked claim rather than
+ * an assertion, and it is why the format above is a contract.
+ *
+ * SUITE_BEGIN deliberately starts with 'S' = 0x53, which has bit0 set. The
+ * testbench calibrates its bit period from the first byte by timing the rising
+ * edge one bit period after the start bit's falling edge, which is only valid
+ * when bit0 is 1. Changing this first character would break that calibration.
+ */
+static void report_line(uint32_t idx, const char *name, int code)
+{
+    uart_puts("T");
+    uart_putdec(idx);
+    uart_putc(' ');
+    uart_puts(name);
+    uart_puts(code == 0 ? " PASS\n" : " FAIL\n");
+}
+
+static void report_summary(void)
+{
+    uart_puts("SUITE_END ntests=");
+    uart_putdec(results.ntests);
+    uart_puts(" npass=");
+    uart_putdec(results.npass);
+    uart_puts(" nfail=");
+    uart_putdec(results.nfail);
+    uart_puts(" first_fail=");
+    uart_putdec(results.first_fail_idx);
+    uart_puts(" code=");
+    uart_putdec(results.first_fail_code);
+    uart_puts(" got=");
+    uart_puthex32(results.first_fail_got);
+    uart_puts(" want=");
+    uart_puthex32(results.first_fail_want);
+    uart_putc('\n');
+}
 
 /* ------------------------------------------------------------------- main -- */
 
@@ -158,6 +222,10 @@ int main(void)
     results.first_fail_code = 0;
     results.first_fail_got  = 0;
     results.first_fail_want = 0;
+
+    /* Serial first, so a fault in uart_init itself is still visible. */
+    uart_init();
+    uart_puts("SUITE_BEGIN\n");
 
     if (n == 0u || n > RESULTS_MAX_ENT)
         return 1;   /* empty or oversized registry is a framework failure */
@@ -184,6 +252,8 @@ int main(void)
             results.npass++;
         else
             latch_first_fail(i, (uint32_t)code, 0u, 0u);
+
+        report_line(i, __test_list_start[i].name, code);
     }
 
     /* Recount from the per-entry codes so the two can never disagree, which
@@ -198,6 +268,23 @@ int main(void)
         else
             results.nfail++;
     }
+
+    /* A serial fault is itself a suite failure: a run that could not report its
+     * results has not demonstrated anything, whatever the tests concluded. */
+    if (uart_error()) {
+        results.nfail++;
+        if (results.first_fail_idx == TEST_NO_FAIL) {
+            results.first_fail_idx  = TEST_NO_FAIL;
+            results.first_fail_code = 0xF00Du;   /* 'serial fault' marker */
+        }
+    }
+
+    report_summary();
+
+    /* Drain BEFORE returning. startup.S writes the mailbox trigger immediately
+     * after main() returns and the testbench may $finish on that trigger, so
+     * leaving the transmitter mid-byte would truncate the transcript. */
+    uart_drain();
 
     return (results.nfail == 0u) ? 0 : 1;
 }

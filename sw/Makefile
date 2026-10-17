@@ -157,13 +157,13 @@ $(BUILD)/startup.o: src/startup.S | $(BUILD)
 
 # One rule per tree: objects are keyed on basename, and the trees hold no
 # colliding names (src/lib.c vs tests/* vs probes/*).
-$(BUILD)/%.o: src/%.c include/soc.h include/test.h | $(BUILD)
+$(BUILD)/%.o: src/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/%.o: tests/%.c include/soc.h include/test.h | $(BUILD)
+$(BUILD)/%.o: tests/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/%.o: probes/%.c include/soc.h include/test.h | $(BUILD)
+$(BUILD)/%.o: probes/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # src/lib.c alone carries the loop-distribute guard (spec §8.4).

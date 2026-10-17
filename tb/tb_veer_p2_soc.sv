@@ -191,6 +191,13 @@ module tb_veer_p2_soc
     );
 
     // ================= project SoC fabric + memories =================
+    // uart_tx_o / uart_irq_o were left dangling before Phase 2. uart_tx_o is
+    // now connected so the suite's serial transcript can be decoded; the
+    // driver side lives in sw/src/uart.c and the receiver in the
+    // "serial receiver" section below.
+    wire uart_tx;
+    wire uart_irq;
+
     soc_top #(.IMEM_HEX("p2_prog.hex"), .DMEM_HEX("")) u_soc (
         .clk(core_clk), .reset_n(rst_l_combined),
         .ifu_haddr(ic_haddr), .ifu_hburst(ic_hburst),
@@ -202,7 +209,8 @@ module tb_veer_p2_soc
         .lsu_hmastlock(lsu_hmastlock), .lsu_hprot(lsu_hprot),
         .lsu_hsize(lsu_hsize), .lsu_htrans(lsu_htrans),
         .lsu_hwrite(lsu_hwrite), .lsu_hwdata(lsu_hwdata),
-        .lsu_hrdata(lsu_hrdata), .lsu_hready(lsu_hready), .lsu_hresp(lsu_hresp)
+        .lsu_hrdata(lsu_hrdata), .lsu_hready(lsu_hready), .lsu_hresp(lsu_hresp),
+        .uart_tx_o(uart_tx), .uart_irq_o(uart_irq)
     );
 
     // ================= tightly-coupled SRAMs (VeeR tb_top pattern) =================
@@ -258,9 +266,43 @@ module tb_veer_p2_soc
     `EL2_IC_TAG_PACKED_SRAM(128,52)
 
     // ================= reset + halt/run + PASS monitor =================
+    // FSDB is opt-in via +wave. With -debug_access+all and a UART-enabled
+    // suite running tens of milliseconds, an unconditional dump produces a
+    // waveform far too large to be useful and slow enough to be skipped. The
+    // repo rule only requires a waveform when investigating a failure, so
+    // routine regressions run without one and can be re-run with +wave.
     initial begin
-        $fsdbDumpfile("p2_veer_soc.fsdb");
-        $fsdbDumpvars(0, tb_veer_p2_soc);
+        if ($test$plusargs("wave")) begin
+            $fsdbDumpfile("p2_veer_soc.fsdb");
+            $fsdbDumpvars(0, tb_veer_p2_soc);
+            $display("[TB] FSDB: enabled (+wave) -> p2_veer_soc.fsdb");
+        end else begin
+            $display("[TB] FSDB: disabled (pass +wave to enable)");
+        end
+    end
+
+// ================= serial capture control =================
+    // Declared here rather than in the receiver section below, because the
+    // reset/halt-run and plusarg blocks above assign them.
+    //   rx_running  capture enable, set when the CPU leaves reset
+    //   corrupt_rx  +uart_corrupt rewrites the first captured byte, so the
+    //               UART gate can be proven to reject a wrong payload
+    //               (doc/Phase2_UART_Reporting_Record.md)
+    //   expect_uart +expect_uart requires a transcript. fw0 emits none, so
+    //               requiring one unconditionally would fail a proven
+    //               regression.
+    reg        rx_running;
+    reg        corrupt_rx;
+    reg        expect_uart;
+
+// ================= reset + halt/run + PASS monitor =================
+    initial begin
+        corrupt_rx = $test$plusargs("uart_corrupt");
+        expect_uart = $test$plusargs("expect_uart");
+        if (corrupt_rx)
+            $display("[TB] UART_CHECK: +uart_corrupt set - byte 0 will be corrupted");
+        if (expect_uart)
+            $display("[TB] UART_CHECK: +expect_uart set - transcript will be verified");
 
         jtag_id[31:28] = 4'b1;
         jtag_id[27:12] = '0;
@@ -292,9 +334,295 @@ module tb_veer_p2_soc
         mpc_debug_run_req = 1'b0;
         wait (o_debug_mode_status == 1'b0);
         $display("[%0t] CPU running, reset_vec=0x%h", $time, reset_vector);
+        // Start serial capture as the firmware comes out of reset. Enabling it
+        // here rather than at time 0 means an image that never transmits (fw0)
+        // costs nothing and cannot block on a negedge that never comes.
+        rx_running = 1'b1;
     end
 
-    // ================= C test-suite result table dump (Phase 1) ==========
+    // ================= serial receiver (reused from tb_veer_uart_soc) ======
+    // Same self-calibrating scheme as the Phase-3 bench: the bit period is
+    // MEASURED from the first byte's edges, never guessed. Calibration relies
+    // on the first transmitted byte having bit0 set, so that the line rises
+    // exactly one bit period after the start bit's falling edge. The suite's
+    // transcript opens with 'S' = 0x53, which qualifies. If that first
+    // character ever changes, this calibration silently measures 2 or 3 bit
+    // periods and the decode fails loudly as a byte mismatch.
+    //
+    // Captures a variable-length transcript (fw0 emits none), so this buffers
+    // up to MAX_RX bytes and parses lines afterwards rather than comparing a
+    // fixed expected sequence byte by byte.
+    localparam integer MAX_RX = 2048;
+
+    reg        calibrated = 1'b0;
+    time       bit_period;
+    reg [7:0]  rx_bytes [0:MAX_RX-1];
+    integer    rx_count   = 0;
+    integer    rx_stop_err = 0;
+    // rx_running, corrupt_rx and expect_uart are declared near the reset block
+    // above, because it assigns them.
+
+    function automatic [7:0] printable(input [7:0] c);
+        printable = (c >= 8'h20 && c < 8'h7F) ? c : 8'h2E; // '.'
+    endfunction
+
+    task automatic uart_rx_byte(output reg [7:0] b);
+        time t0;
+        integer k;
+        begin
+            @(negedge uart_tx);                 // start bit falling edge
+            t0 = $time;
+            if (!calibrated) begin
+                // First byte has bit0 = 1 (see note above), so the line rises
+                // after exactly one bit period. Measure, do not assume.
+                @(posedge uart_tx);
+                bit_period = $time - t0;
+                calibrated  = 1'b1;
+                // Printed with explicit %0d as well as %0t: %0t renders in ps
+                // while the arithmetic is in ns, which makes the raw numbers
+                // look inconsistent unless the units are stated.
+                $display("[%0t ns] UART MONITOR: calibrated bit period = %0t ns (%0d ns, %0d clk)",
+                         $time, bit_period, bit_period, bit_period / 10);
+            end
+            // align to the middle of data bit 0 = t0 + 1.5 * bit_period
+            #((3 * bit_period) / 2 - ($time - t0));
+            for (k = 0; k < 8; k = k + 1) begin
+                b[k] = uart_tx;
+                if (k != 7) #(bit_period);
+            end
+            #(bit_period);                       // stop bit window
+            if (uart_tx !== 1'b1) begin
+                $display("[%0t ns] UART MONITOR: ERROR stop bit not high after byte %0d",
+                         $time, rx_count);
+                rx_stop_err++;
+            end
+        end
+    endtask
+
+    // Continuous capture, gated by rx_running so it stops once the suite has
+    // finished and the line has gone quiet.
+    initial begin : rx_loop
+        forever begin
+            wait (rx_running && rx_count < MAX_RX);
+            uart_rx_byte(rx_bytes[rx_count]);
+            if (corrupt_rx && rx_count == 0)
+                rx_bytes[0] = 8'h00;            // deliberate corruption
+            $display("[%0t ns] UART RX[%0d] = 0x%02h '%c'", $time, rx_count,
+                     rx_bytes[rx_count], printable(rx_bytes[rx_count]));
+            rx_count++;
+        end
+    end
+
+// ================= UART transcript verification =========================
+//
+// The transcript is PARSED, not string-compared against a golden copy, and
+// every field is cross-checked against the DMEM result table. That makes
+// "UART and DMEM agree" a checked claim instead of an assumption: if the
+// firmware prints one number and stores another, this fails.
+    integer uart_fail;
+    reg     uart_checked;
+
+    // DMEM table header, read once by dump_test_results and cross-checked
+    // against the parsed transcript by verify_uart_transcript. Module scope so
+    // both tasks see the same values.
+    integer tb_ntests, tb_npass, tb_nfail;
+    integer tb_ff_idx, tb_ff_code, tb_ff_got, tb_ff_want;
+
+    function automatic bit str_is(input integer start, input integer n,
+                                  input string want);
+        integer p;
+        begin
+            str_is = 1'b0;
+            if (start + n > rx_count) str_is = 1'b0;
+            else begin
+                str_is = 1'b1;
+                for (p = 0; p < n; p = p + 1)
+                    if (rx_bytes[start+p] !== want[p]) str_is = 1'b0;
+            end
+        end
+    endfunction
+
+    // Find a key substring anywhere in the transcript and return the index
+    // just past it, or -1. Keys are unique within one transcript, so an
+    // unanchored search is safe here. An earlier version required a preceding
+    // newline, which silently failed for every space-separated key after the
+    // first (npass=, nfail=, first_fail=, got=, want=) and reported zeros.
+    function automatic integer find_kv(input integer from, input string key);
+        integer p, klen;
+        begin
+            find_kv = -1;
+            klen = key.len();
+            for (p = from; p + klen <= rx_count; p = p + 1)
+                if (str_is(p, klen, key)) find_kv = p + klen;
+        end
+    endfunction
+
+    function automatic integer scan_dec(input integer from);
+        integer p;
+        integer val;
+        begin
+            val = 0;
+            scan_dec = -1;
+            if (from < 0) begin
+                scan_dec = -1;
+                return scan_dec;
+            end
+            for (p = from; p < rx_count; p = p + 1) begin
+                if (rx_bytes[p] >= "0" && rx_bytes[p] <= "9")
+                    val = val * 10 + (rx_bytes[p] - "0");
+                else begin
+                    scan_dec = val;
+                    return scan_dec;
+                end
+            end
+            scan_dec = -1;
+        end
+    endfunction
+
+    function automatic integer scan_hex(input integer from);
+        integer p;
+        integer val;
+        begin
+            val = 0;
+            scan_hex = -1;
+            if (from < 0) begin
+                scan_hex = -1;
+                return scan_hex;
+            end
+            for (p = from; p < rx_count; p = p + 1) begin
+                if      ((rx_bytes[p] >= "0") && (rx_bytes[p] <= "9"))
+                    val = val * 16 + (rx_bytes[p] - "0");
+                else if ((rx_bytes[p] >= "A") && (rx_bytes[p] <= "F"))
+                    val = val * 16 + (rx_bytes[p] - "A" + 10);
+                else if ((rx_bytes[p] >= "a") && (rx_bytes[p] <= "f"))
+                    val = val * 16 + (rx_bytes[p] - "a" + 10);
+                else begin
+                    scan_hex = val;
+                    return scan_hex;
+                end
+            end
+            scan_hex = -1;
+        end
+    endfunction
+
+    task automatic verify_uart_transcript;
+        integer ntests_u, npass_u, nfail_u, ff_u, code_u;
+        integer got_u, want_u;
+        integer idx;
+        integer line_start;
+        integer tcount, pcount;
+        begin
+            uart_checked = 1'b1;
+            uart_fail    = 0;
+
+            if (rx_stop_err != 0) begin
+                $display("[TB] UART_CHECK: FAIL - %0d stop-bit error(s)", rx_stop_err);
+                uart_fail++;
+            end
+
+            if (rx_count < 12 || !str_is(0, 12, "SUITE_BEGIN\n")) begin
+                $display("[TB] UART_CHECK: FAIL - missing SUITE_BEGIN (captured %0d bytes)",
+                         rx_count);
+                uart_fail++;
+            end
+
+            // ---- per-test lines ------------------------------------------
+            tcount = 0; pcount = 0;
+            line_start = 12;                       // just past SUITE_BEGIN\n
+            for (idx = 0; idx < rx_count; idx = idx + 1) begin
+                if (rx_bytes[idx] == 8'h0A) begin
+                    // Line body is [line_start, idx), and rx_bytes[idx] is the
+                    // terminating newline. Check the trailing 6 bytes only:
+                    // comparing the whole span against " PASS\n" can never
+                    // match, because a real line is "T0 <name> PASS\n".
+                    if (idx > line_start && rx_bytes[line_start] == "T") begin
+                        tcount = tcount + 1;
+                        if (str_is(idx - 5, 6, " PASS\n"))
+                            pcount = pcount + 1;
+                    end
+                    line_start = idx + 1;
+                end
+            end
+
+            // ---- summary line, cross-checked against DMEM ----------------
+            ntests_u = find_kv(0, "SUITE_END ntests=");
+            if (ntests_u < 0) begin
+                $display("[TB] UART_CHECK: FAIL - no SUITE_END summary line");
+                uart_fail++;
+            end else begin
+                ntests_u  = scan_dec(find_kv(0, "SUITE_END ntests="));
+                npass_u   = scan_dec(find_kv(0, "npass="));
+                nfail_u   = scan_dec(find_kv(0, "nfail="));
+                ff_u      = scan_dec(find_kv(0, "first_fail="));
+                code_u    = scan_dec(find_kv(0, "code="));
+                got_u     = scan_hex(find_kv(0, "got=0x"));
+                want_u    = scan_hex(find_kv(0, "want=0x"));
+
+                $display("[TB] UART_CHECK: parsed ntests=%0d npass=%0d nfail=%0d first_fail=%0d code=%0d got=0x%08x want=0x%08x",
+                         ntests_u, npass_u, nfail_u, ff_u, code_u, got_u, want_u);
+
+                // Cross-check against the DMEM table (values read below by
+                // verify_against_dmem, which owns the table accessors).
+                if (ntests_u !== tb_ntests) begin
+                    $display("[TB] UART_CHECK: FAIL - UART ntests=%0d but DMEM ntests=%0d",
+                             ntests_u, tb_ntests);
+                    uart_fail++;
+                end
+                if (npass_u !== tb_npass) begin
+                    $display("[TB] UART_CHECK: FAIL - UART npass=%0d but DMEM npass=%0d",
+                             npass_u, tb_npass);
+                    uart_fail++;
+                end
+                if (nfail_u !== tb_nfail) begin
+                    $display("[TB] UART_CHECK: FAIL - UART nfail=%0d but DMEM nfail=%0d",
+                             nfail_u, tb_nfail);
+                    uart_fail++;
+                end
+                if (ff_u !== tb_ff_idx) begin
+                    $display("[TB] UART_CHECK: FAIL - UART first_fail=%0d but DMEM first_fail_idx=%0d",
+                             ff_u, tb_ff_idx);
+                    uart_fail++;
+                end
+                if (code_u !== tb_ff_code) begin
+                    $display("[TB] UART_CHECK: FAIL - UART code=%0d but DMEM first_fail_code=%0d",
+                             code_u, tb_ff_code);
+                    uart_fail++;
+                end
+                if (tcount !== tb_ntests) begin
+                    $display("[TB] UART_CHECK: FAIL - %0d per-test line(s) but ntests=%0d",
+                             tcount, tb_ntests);
+                    uart_fail++;
+                end
+                if (pcount !== tb_npass) begin
+                    $display("[TB] UART_CHECK: FAIL - %0d PASS line(s) but npass=%0d",
+                             pcount, tb_npass);
+                    uart_fail++;
+                end
+                if (got_u !== tb_ff_got || want_u !== tb_ff_want) begin
+                    $display("[TB] UART_CHECK: FAIL - UART got=0x%08x want=0x%08x but DMEM got=0x%08x want=0x%08x",
+                             got_u, want_u, tb_ff_got, tb_ff_want);
+                    uart_fail++;
+                end
+            end
+
+            if (uart_fail == 0)
+                $display("[TB] UART_CHECK: PASS (%0d byte transcript, %0d test lines, UART agrees with DMEM)",
+                         rx_count, tcount);
+            else
+                $display("[TB] UART_CHECK: FAIL (%0d condition(s), %0d byte transcript)",
+                         uart_fail, rx_count);
+
+            // Echo the transcript so the log carries the report as text, not
+            // only as parsed fields. This is the human-readable evidence that
+            // each test was reported individually.
+            $write("[TB] UART_TRANSCRIPT_BEGIN\n");
+            for (int unsigned i = 0; i < rx_count; i = i + 1) begin
+                if (rx_bytes[i] == 8'h0A) $display("[TB] |%s", "");
+                else                      $write("%s", printable(rx_bytes[i]));
+            end
+            $display("[TB] UART_TRANSCRIPT_END");
+        end
+    endtask
     // Reads the .results NOLOAD block the firmware runner fills in, by absolute
     // DMEM address. Mirrors sw/include/test.h:
     //   [0x00] magic 'T''E''S''T'  [0x04] ntests  [0x08] npass  [0x0C] nfail
@@ -309,7 +637,6 @@ module tb_veer_p2_soc
         int unsigned magic;
         int unsigned ntests, npass, nfail, ff_idx, ff_code, ff_got, ff_want;
         int unsigned base;
-        reg [31:0] nameptr;
         begin
             // u_dmem.mem is indexed by OFFSET from the DMEM base, not by
             // absolute address: ahb_sram.mem is SIZE_BYTES deep and
@@ -349,13 +676,18 @@ module tb_veer_p2_soc
                          $time, ff_idx, ff_code, ff_got, ff_want);
                 for (int unsigned i = 0; i < ntests; i++) begin
                     int unsigned e = base + 32 + i*8;
-                    nameptr = {u_soc.u_dmem.mem[e+3], u_soc.u_dmem.mem[e+2],
-                               u_soc.u_dmem.mem[e+1], u_soc.u_dmem.mem[e+0]};
                     $display("[%0t] TEST_CASE[%0d] name_ptr=0x%08h code=%0d",
-                             $time, i, nameptr,
+                             $time, i,
+                             {u_soc.u_dmem.mem[e+3], u_soc.u_dmem.mem[e+2],
+                              u_soc.u_dmem.mem[e+1], u_soc.u_dmem.mem[e+0]},
                              {u_soc.u_dmem.mem[e+7], u_soc.u_dmem.mem[e+6],
                               u_soc.u_dmem.mem[e+5], u_soc.u_dmem.mem[e+4]});
                 end
+
+                // Publish for the UART cross-check.
+                tb_ntests  = ntests;  tb_npass  = npass;  tb_nfail  = nfail;
+                tb_ff_idx  = ff_idx;  tb_ff_code = ff_code;
+                tb_ff_got  = ff_got;  tb_ff_want = ff_want;
             end
         end
     endtask
@@ -385,6 +717,24 @@ module tb_veer_p2_soc
                          u_soc.u_dmem.mem[4], u_soc.u_dmem.mem[5],
                          u_soc.u_dmem.mem[6], u_soc.u_dmem.mem[7]);
             end
+
+            // Let the serial line go quiet, then decode and check it. The
+            // firmware already waited for TEMT before returning, so this only
+            // has to cover the in-flight tail; the bound keeps a truncated
+            // transcript from silently passing.
+            rx_running = 1'b0;
+            #(100 * 10 * 20);                       // <= 20 bit periods
+            dump_test_results();
+            if (expect_uart) begin
+                verify_uart_transcript();
+                if (uart_fail != 0)
+                    $display("[%0t] UART_CHECK_RESULT: FAIL", $time);
+                else
+                    $display("[%0t] UART_CHECK_RESULT: PASS", $time);
+            end else begin
+                $display("[%0t] UART_CHECK_RESULT: SKIP (+expect_uart not set)", $time);
+            end
+
             #100;
             $finish;
         end
@@ -399,7 +749,10 @@ module tb_veer_p2_soc
         .N_IMEM_RD(8),
         .N_DMEM_RD(16),
         .N_DMEM_WR(16),
-        .WATCHDOG_NS(1_900_000)   // ahead of the #2000000 timeout below
+        // Raised for Phase 2: the UART-enabled suite transmits a ~200-byte
+        // transcript at 90 ns/bit (~18 us) and runs longer than fw0. 8x the
+        // fw0 budget, which fw0 itself finishes in 90.7 ms with room to spare.
+        .WATCHDOG_NS(15_000_000)  // ahead of the #16000000 timeout below
     ) u_ahb_mon (
         .clk       (core_clk),
         .rst_n     (rst_l_combined),
@@ -419,7 +772,7 @@ module tb_veer_p2_soc
     );
 
     initial begin
-        #2000000;
+        #16000000;
         // Also dump the Phase-0 spike fields on timeout. A trap parks the CPU
         // before startup.S can write mbox[2], so the monitor above never fires
         // and its display is skipped — without this the values written before
