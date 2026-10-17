@@ -43,7 +43,38 @@ FILELIST  := $(REPO)/sim/filelist.f
 VCS_FLAGS := -full64 -sverilog -debug_access+all -kdb \
              +define+RV_OPENSOURCE +error+500 -timescale=1ns/10ps
 
-.PHONY: all veer-config rtl sim run verdi wave clean help
+# ---------------------------------------------------------------------------
+# DECISION D1 (widened) — per-variant monitor expectations
+#
+# tb_ahb_cycle_monitor gates on activity MINIMA and expected ERROR counts. The
+# frozen fw0 values below are the defaults, so a run that states nothing
+# reproduces today's behaviour exactly. Every variant target overrides them.
+#
+# Phase 0 evidence for why this is per-variant rather than one frozen set:
+#   - DCCM probe: P2_TB2_RESULT PASS, but AHB_RW_MONITOR FAIL on
+#     dmem_rd=9 < 16 and dmem_wr=14 < 16 — a short image, not a defect.
+#   - ICCM probe: def=1, bus_err=2 — deliberate unmapped access, which the old
+#     hard-coded `== 0` equalities could not express.
+#
+# Lowering a minimum does not disable the check: the monitor still fails when a
+# minimum is not met. See the negative-control run in
+# doc/Phase0_ICCM_DCCM_Access_Spike_Record.md §6.
+# ---------------------------------------------------------------------------
+EXPECT_DEF    ?= 0
+EXPECT_BUSERR ?= 0
+MIN_IMEM_RD   ?= 8
+MIN_DMEM_RD   ?= 16
+MIN_DMEM_WR   ?= 16
+
+MON_EXPECT_PLUSARGS := \
+    +expect_def=$(EXPECT_DEF) \
+    +expect_buserr=$(EXPECT_BUSERR) \
+    +min_imem_rd=$(MIN_IMEM_RD) \
+    +min_dmem_rd=$(MIN_DMEM_RD) \
+    +min_dmem_wr=$(MIN_DMEM_WR)
+
+.PHONY: all veer-config rtl sim run verdi wave clean help \
+        test-fw0 test-spike-dccm test-spike-iccm
 .DEFAULT_GOAL := all
 
 all: sim
@@ -54,6 +85,9 @@ help:
 	@echo "  rtl          -> VCS compile into $(WORK)"
 	@echo "  run          -> re-run simv against $(SW_BUILD)/imem.mem (no recompile)"
 	@echo "  sim          -> image + run + gate on BOTH tokens"
+	@echo "  test-fw0        -> frozen memory probe (frozen thresholds)"
+	@echo "  test-spike-dccm -> DCCM access probe (declares its own minima)"
+	@echo "  test-spike-iccm -> ICCM probe (declares expect_def=1 expect_buserr=2)"
 	@echo "  verdi        -> open FW_FSDB with run/fw_wave.rc"
 	@echo "  clean        -> remove $(WORK)"
 
@@ -113,7 +147,8 @@ run:
 	    { echo "[SIM] FAIL: $(SW_BUILD)/imem.mem missing — run 'make -C sw mem'"; exit 1; }
 	@cp $(SW_BUILD)/imem.mem $(FW_HEX)
 	@echo "[SIM] image: $(SW_BUILD)/imem.mem ($$(wc -c < $(SW_BUILD)/imem.mem) bytes) -> $(FW_HEX)"
-	cd $(WORK) && ./simv -l $(WORK)/sim.log
+	@echo "[SIM] expect: $(MON_EXPECT_PLUSARGS)"
+	cd $(WORK) && ./simv $(MON_EXPECT_PLUSARGS) -l $(WORK)/sim.log
 	@echo "[SIM] ---- gate: plan §5.2, both tokens required ----"
 	@grep -q "P2_TB2_RESULT: PASS" $(WORK)/sim.log || \
 	    { echo "[SIM] FAIL: no 'P2_TB2_RESULT: PASS'"; \
@@ -130,6 +165,33 @@ run:
 	 else echo "[SIM] PASS  no *.ihex in $(WORK)"; fi
 	@echo "[SIM] FSDB  $(WORK)/p2_veer_soc.fsdb"
 	@echo "[SIM] DONE"
+
+# ---------------------------------------------------------------------------
+# Per-variant test targets (decision D1). Each declares its image AND its
+# expected monitor activity minima / error counts explicitly.
+# ---------------------------------------------------------------------------
+
+# fw0 — frozen memory probe. Established counts (Phase 0 record §7):
+#   imem_rd=2393 dmem_rd=366 dmem_wr=164 def=0 bus_err=0
+test-fw0:
+	@$(MAKE) run
+
+# DCCM probe — PASSES P2_TB2_RESULT but makes far fewer DMEM accesses than
+# fw0, so it declares its own (lower, still enforced) activity minima.
+test-spike-dccm:
+	@$(MAKE) run \
+	    SW_BUILD=$(SW_DIR)/build/spike_dccm \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0
+
+# ICCM probe — deliberately provokes the default ERROR slave (one store, one
+# load, both HRESP). Declares the exact expected error counts, so this is a
+# precise assertion rather than a tolerated failure.
+test-spike-iccm:
+	@$(MAKE) run \
+	    SW_BUILD=$(SW_DIR)/build/spike_iccm \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=1 MIN_DMEM_WR=1 \
+	    EXPECT_DEF=1 EXPECT_BUSERR=2
 
 # ---------------------------------------------------------------------------
 # Verdi (plan §5.3 — the waveform half of the evidence)

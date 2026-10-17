@@ -35,15 +35,39 @@
 //                               uart_rd=.. uart_wr=.. def=.. bus_err=..
 //            [TB] AHB_RW_MONITOR: PASS|FAIL ...
 //
-//          PASS iff  imem_rd >= N_IMEM_RD
-//                 && dmem_rd >= N_DMEM_RD
-//                 && dmem_wr >= N_DMEM_WR
-//                 && bus_err == 0
-//                 && def     == 0        (no transfer hit the ERROR slave)
+//          PASS iff  imem_rd   >= min_imem_rd
+//                 && dmem_rd   >= min_dmem_rd
+//                 && dmem_wr   >= min_dmem_wr
+//                 && bus_err   == expect_buserr
+//                 && def       == expect_def     (transfers hitting the ERROR slave)
 //
 //          imem_wr is a CANARY: under image decision D11 the .bss VMA lives
 //          in DMEM, so nothing ever stores into IMEM. Any non-zero value means
 //          a stray write is reaching code memory.
+//
+// ============================================================================
+// DECISION D1 (widened 2026-10-17) — per-variant expectations
+//
+//   Phase 0 proved that "one frozen threshold set" cannot serve every image.
+//   The DCCM probe passed P2_TB2_RESULT but failed this monitor on
+//   dmem_rd=9 < 16 / dmem_wr=14 < 16, purely because a short probe image makes
+//   fewer DMEM accesses than fw0. The ICCM probe failed the opposite way:
+//   def_sel=1 and bus_err=2, which were hard-coded equalities against 0.
+//
+//   So BOTH halves of the gate are now variant-configurable:
+//     * activity MINIMA  — min_imem_rd / min_dmem_rd / min_dmem_wr
+//     * expected ERRORS  — expect_def / expect_buserr
+//
+//   These are plusargs, not parameters, deliberately: $readmemh runs at t=0 so
+//   a single elaborated simv serves every variant by swapping the image. Using
+//   parameters would force a VCS recompile per variant and defeat that.
+//
+//   NOTHING IS WEAKENED. The activity checks are retained in full and still
+//   fail the gate when a minimum is not met — a variant declares a lower
+//   minimum, it does not switch the check off. The defaults below are the
+//   frozen fw0 values, so omitting every plusarg reproduces today's behaviour
+//   byte for byte. Each variant must state its own expectations explicitly;
+//   sim/Makefile always passes all five.
 // ============================================================================
 `timescale 1ns / 1ps
 
@@ -51,6 +75,11 @@ module tb_ahb_cycle_monitor #(
     parameter int N_IMEM_RD = 8,
     parameter int N_DMEM_RD = 16,
     parameter int N_DMEM_WR = 16,
+    // Expected ERROR-slave hits and bus-error responses. Default 0 preserves
+    // the frozen fw0 contract; a variant that deliberately provokes them sets
+    // the exact count it expects. See DECISION D1 above.
+    parameter int N_EXPECT_DEF    = 0,
+    parameter int N_EXPECT_BUSERR = 0,
     // Must fire BEFORE tb_veer_p2_soc's own #2000000 watchdog so the cycle
     // summary is still in the log when the testbench gives up.
     parameter int WATCHDOG_NS = 1_900_000
@@ -75,6 +104,29 @@ module tb_ahb_cycle_monitor #(
 );
 
     localparam logic [1:0] HTRANS_IDLE = 2'b00;
+
+    // ---------------------------------------------------- effective thresholds
+    // Defaults are the frozen fw0 values; plusargs override per variant. Every
+    // effective value is echoed into the log so a FAIL is always explainable.
+    int unsigned min_imem_rd, min_dmem_rd, min_dmem_wr;
+    int unsigned expect_def, expect_buserr;
+
+    initial begin
+        min_imem_rd   = N_IMEM_RD;
+        min_dmem_rd   = N_DMEM_RD;
+        min_dmem_wr   = N_DMEM_WR;
+        expect_def    = N_EXPECT_DEF;
+        expect_buserr = N_EXPECT_BUSERR;
+
+        void'($value$plusargs("min_imem_rd=%d",   min_imem_rd));
+        void'($value$plusargs("min_dmem_rd=%d",   min_dmem_rd));
+        void'($value$plusargs("min_dmem_wr=%d",   min_dmem_wr));
+        void'($value$plusargs("expect_def=%d",    expect_def));
+        void'($value$plusargs("expect_buserr=%d", expect_buserr));
+
+        $display("[TB] AHB_MON_EXPECT min_imem_rd=%0d min_dmem_rd=%0d min_dmem_wr=%0d expect_def=%0d expect_buserr=%0d",
+                 min_imem_rd, min_dmem_rd, min_dmem_wr, expect_def, expect_buserr);
+    end
 
     // ---------------------------------------------------------------- counters
     int unsigned imem_rd, imem_wr;
@@ -107,11 +159,11 @@ module tb_ahb_cycle_monitor #(
     task automatic report(input string reason);
         int unsigned fail_count;
         bit pass;
-        pass = (imem_rd >= N_IMEM_RD) &&
-               (dmem_rd >= N_DMEM_RD) &&
-               (dmem_wr >= N_DMEM_WR) &&
-               (bus_err == 0) &&
-               (def_sel == 0);
+        pass = (imem_rd >= min_imem_rd) &&
+               (dmem_rd >= min_dmem_rd) &&
+               (dmem_wr >= min_dmem_wr) &&
+               (bus_err == expect_buserr) &&
+               (def_sel == expect_def);
 
         $display("[TB] AHB_CYCLES imem_rd=%0d imem_wr=%0d dmem_rd=%0d dmem_wr=%0d",
                  imem_rd, imem_wr, dmem_rd, dmem_wr);
@@ -119,28 +171,31 @@ module tb_ahb_cycle_monitor #(
                  uart_rd, uart_wr, def_sel, bus_err, ifu_bad);
 
         if (pass) begin
-            $display("[TB] AHB_RW_MONITOR: PASS (%s; thresholds imem_rd>=%0d dmem_rd>=%0d dmem_wr>=%0d bus_err==0 def==0)",
-                     reason, N_IMEM_RD, N_DMEM_RD, N_DMEM_WR);
+            $display("[TB] AHB_RW_MONITOR: PASS (%s; thresholds imem_rd>=%0d dmem_rd>=%0d dmem_wr>=%0d bus_err==%0d def==%0d)",
+                     reason, min_imem_rd, min_dmem_rd, min_dmem_wr,
+                     expect_buserr, expect_def);
         end else begin
             fail_count = 0;
-            if (imem_rd < N_IMEM_RD) begin
-                $display("[TB]   FAIL reason: imem_rd=%0d < %0d", imem_rd, N_IMEM_RD);
+            if (imem_rd < min_imem_rd) begin
+                $display("[TB]   FAIL reason: imem_rd=%0d < %0d", imem_rd, min_imem_rd);
                 fail_count++;
             end
-            if (dmem_rd < N_DMEM_RD) begin
-                $display("[TB]   FAIL reason: dmem_rd=%0d < %0d", dmem_rd, N_DMEM_RD);
+            if (dmem_rd < min_dmem_rd) begin
+                $display("[TB]   FAIL reason: dmem_rd=%0d < %0d", dmem_rd, min_dmem_rd);
                 fail_count++;
             end
-            if (dmem_wr < N_DMEM_WR) begin
-                $display("[TB]   FAIL reason: dmem_wr=%0d < %0d", dmem_wr, N_DMEM_WR);
+            if (dmem_wr < min_dmem_wr) begin
+                $display("[TB]   FAIL reason: dmem_wr=%0d < %0d", dmem_wr, min_dmem_wr);
                 fail_count++;
             end
-            if (bus_err != 0) begin
-                $display("[TB]   FAIL reason: bus_err=%0d (HRESP asserted)", bus_err);
+            if (bus_err != expect_buserr) begin
+                $display("[TB]   FAIL reason: bus_err=%0d != expected %0d (HRESP asserted %0d time(s))",
+                         bus_err, expect_buserr, bus_err);
                 fail_count++;
             end
-            if (def_sel != 0) begin
-                $display("[TB]   FAIL reason: %0d transfer(s) hit the default ERROR slave", def_sel);
+            if (def_sel != expect_def) begin
+                $display("[TB]   FAIL reason: def=%0d != expected %0d (%0d transfer(s) hit the default ERROR slave)",
+                         def_sel, expect_def, def_sel);
                 fail_count++;
             end
             $display("[TB] AHB_RW_MONITOR: FAIL (%s, %0d condition(s))", reason, fail_count);

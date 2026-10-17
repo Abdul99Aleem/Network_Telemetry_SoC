@@ -164,7 +164,100 @@ attempt, before the probe was split per region.
 
 ---
 
-# 7. Regression — fw0 unchanged
+# 7. Decision D1 (widened) — per-variant monitor expectations
+
+Committed separately from the Phase 0 probe, because it is a testbench change
+rather than a firmware result.
+
+## 7.1 What changed
+
+`tb/tb_ahb_cycle_monitor` previously hard-coded `bus_err == 0` and
+`def_sel == 0` as equalities, and took its activity minima as module
+parameters fixed at the `tb_veer_p2_soc.sv` instantiation. Phase 0 showed
+neither works for more than one image.
+
+Both halves are now variant-configurable, via plusargs:
+
+| Control | Plusarg | Default (frozen fw0) |
+|---|---|---|
+| activity minimum | `+min_imem_rd` | 8 |
+| activity minimum | `+min_dmem_rd` | 16 |
+| activity minimum | `+min_dmem_wr` | 16 |
+| expected ERROR-slave hits | `+expect_def` | 0 |
+| expected HRESP cycles | `+expect_buserr` | 0 |
+
+Plusargs rather than parameters, deliberately: `$readmemh` runs at t=0, so a
+single elaborated `simv` serves every variant by swapping the image. Parameters
+would force a VCS recompile per variant and defeat that.
+
+`sim/Makefile` gains named targets that each declare their image **and** their
+expectations explicitly:
+
+| Target | Image | minima | expected errors |
+|---|---|---|---|
+| `test-fw0` | `sw/build` | 8 / 16 / 16 | 0 / 0 |
+| `test-spike-dccm` | `sw/build/spike_dccm` | 8 / 8 / 8 | 0 / 0 |
+| `test-spike-iccm` | `sw/build/spike_iccm` | 8 / 1 / 1 | 1 / 2 |
+
+Every effective value is echoed into the log as `[TB] AHB_MON_EXPECT ...`, so a
+FAIL is always explainable from the log alone.
+
+**Nothing was weakened.** The activity checks are retained in full and still
+fail the gate when a minimum is not met; a variant declares a *lower* minimum,
+it does not switch the check off. Proven by §7.3 below.
+
+## 7.2 Evidence
+
+**(a) DCCM probe passes with its declared expectations**
+
+```text
+[TB] AHB_MON_EXPECT min_imem_rd=8 min_dmem_rd=8 min_dmem_wr=8 expect_def=0 expect_buserr=0
+[5535000] MBOX[8..15] spike fields : iccm_rb=00000000 dccm_rb=5a5a5678
+[5535000] P2_TB2_RESULT: PASS (P2 program ran through project fabric)
+[TB] AHB_CYCLES imem_rd=143 imem_wr=0 dmem_rd=9 dmem_wr=14
+[TB] AHB_CYCLES uart_rd=0 uart_wr=0 def=0 bus_err=0 ifu_offtarget=0
+[TB] AHB_RW_MONITOR: PASS (mailbox reached; thresholds imem_rd>=8 dmem_rd>=8 dmem_wr>=8 bus_err==0 def==0)
+```
+
+**(b) fw0 regression unchanged** — cycle counts identical to
+`doc/SoC_Phase_Status_Audit.md` §3, i.e. `imem_rd=2393 dmem_rd=366 dmem_wr=164`,
+`def=0 bus_err=0`, both tokens PASS, `G13 no *.ihex` PASS. See §8.
+
+**(c) Negative control — an insufficient activity minimum DOES fail the gate**
+
+Same DCCM image, deliberately impossible minima:
+
+```text
+[TB] AHB_MON_EXPECT min_imem_rd=8 min_dmem_rd=1000 min_dmem_wr=1000 expect_def=0 expect_buserr=0
+[5535000] P2_TB2_RESULT: PASS (P2 program ran through project fabric)
+[TB] AHB_CYCLES imem_rd=143 imem_wr=0 dmem_rd=9 dmem_wr=14
+[TB]   FAIL reason: dmem_rd=9 < 1000
+[TB]   FAIL reason: dmem_wr=14 < 1000
+[TB] AHB_RW_MONITOR: FAIL (mailbox reached, 2 condition(s))
+[SIM] FAIL: no 'AHB_RW_MONITOR: PASS'
+```
+
+Note `P2_TB2_RESULT: PASS` alongside `AHB_RW_MONITOR: FAIL` — the two tokens are
+independent, and the run correctly returns nonzero.
+
+**(d) The error side now expresses a deliberate unmapped access precisely**
+
+```text
+[TB] AHB_MON_EXPECT min_imem_rd=8 min_dmem_rd=1 min_dmem_wr=1 expect_def=1 expect_buserr=2
+[TB] AHB_CYCLES imem_rd=87 imem_wr=0 dmem_rd=4 dmem_wr=7
+[TB] AHB_CYCLES uart_rd=0 uart_wr=0 def=1 bus_err=2 ifu_offtarget=0
+[TB] AHB_RW_MONITOR: PASS (watchdog timeout; thresholds imem_rd>=8 dmem_rd>=1 dmem_wr>=1 bus_err==2 def==1)
+[2000000000] P2_TB2_RESULT: TIMEOUT FAIL
+```
+
+The monitor now PASSes on an exact match (`def=1`, `bus_err=2` as declared),
+while `P2_TB2_RESULT: TIMEOUT FAIL` still correctly fails the run, because ICCM
+genuinely is not reachable. The bus-level observation and the accessibility
+verdict are separate claims and are now separately expressed.
+
+---
+
+# 8. Regression — fw0 unchanged
 
 Re-run after every change, on the default `sw/build` image:
 
@@ -186,7 +279,7 @@ and spike images. The added `MBOX[8..15]` line is purely additive and reads
 
 ---
 
-# 8. Build plumbing added (decision D2 groundwork)
+# 9. Build plumbing added (decision D2 groundwork)
 
 | Change | File | Purpose |
 |---|---|---|
@@ -201,7 +294,7 @@ serves every variant. This is the mechanism decision D1/D2
 
 ---
 
-# 9. Next
+# 10. Next
 
 Phase 1 — test framework (`test.h`, `.test_list` registry, MRAC in `startup.S`,
 `.results` linker section, gates G14/G15). The `MAIN_SRC` / `EXTRA_CFLAGS` /
