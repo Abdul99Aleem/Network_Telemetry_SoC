@@ -495,7 +495,7 @@ unexpected count reports as a mismatch rather than as "!= 0".
 | 1 | Test framework, linker result table, test discovery, G14/G15 | Existing fw0 flow | Build passes; empty test list reports correctly; G1–G15 pass |
 | 2 | UART reporting, DMEM results dump, serial receiver, timeout/wave strategy | Phase 1 | Deliberately failing test is visible in UART and DMEM; simulation fails correctly |
 | 3 | Memory and AHB bus tests | Phases 1–2; Phase 0 for ICCM/DCCM | **COMPLETE** — safe patterns pass; expected-error path works (redesigned around the no-trap finding, §5.3.1); existing bus regression stays green (`doc/Phase3_Memory_and_Bus_Record.md`) |
-| 4 | C-driven UART tests | Phases 1–2 | UART cases pass through the integrated VeeR path |
+| 4 | C-driven UART tests | Phases 1–2 | **COMPLETE** — 10 UART cases pass through the integrated VeeR path (14 total with common tests). See `doc/Phase4_UART_Test_Record.md` |
 | 5a | AES AHB decode, bridge, SoC instantiation and IRQ wiring | Explicit design decision; preserve fabric regression | Existing T1–T14 fabric tests pass unchanged plus AES integration test passes |
 | 5b | AES C driver and known-answer tests | Phase 5a | Ciphertext, status and IRQ match reference |
 | 6 | Timer/GPIO/Network/CRC implementation and bus integration | RTL and register specs | Each IP passes direct RTL tests before C tests are enabled |
@@ -524,7 +524,7 @@ The suite is complete only when all applicable statements below are supported by
 - [x] Intentional failure produces a nonzero test entry, correct first-failure fields, and final simulation FAIL.
 - [x] IMEM/DMEM safety bounds and reserved regions are enforced.
 - [x] ICCM/DCCM tests run only if Phase 0 establishes safe access.
-- [ ] Current UART C-driven tests pass and the pre-existing Python-generated UART E2E regression remains green. *(Phase 4)*
+- [x] Current UART C-driven tests pass and the pre-existing Python-generated UART E2E regression remains green. *(Phase 4 — COMPLETE 2026-10-17. 10 UART tests, 14 total with common cases, all PASS. See `doc/Phase4_UART_Test_Record.md`.)*
 - [x] Unmapped-address tests handle expected traps without hanging, resuming at a fixed label (§5.3.1). *(Redesigned: a bus response error does not trap on this core — see the §5.3.1 correction and `doc/Phase3_Memory_and_Bus_Record.md` §2.)*
 - [x] `tb_ahb_cycle_monitor` carries expected-error counts and reports an unexpected count as a failure (§6.2).
 - [ ] AES C tests are not enabled until AES is integrated into the SoC fabric.

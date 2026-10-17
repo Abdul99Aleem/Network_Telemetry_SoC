@@ -443,3 +443,29 @@ See `doc/Phase3_Memory_and_Bus_Record.md` §2.
 Two documentation defects should be fixed alongside: re-run and capture the
 isolated UART AXI benches (§5.2), and correct `README.md:243` and `:245` to
 cite surviving logs rather than stale records.
+
+## 10. Update 2026-10-17 — C-driven UART tests (Phase 4)
+
+Phase 4 of the C test suite is complete. `sw/tests/t_uart.c` exercises the
+UART through the real SoC data path (VeeR → AHB → AXI → UART → `uart_tx_o`)
+with 10 C test cases (UART-01..10), bringing the UART-specific test count to
+14 (4 common + 10 UART).
+
+| Target | Result | Evidence |
+|---|---|---|
+| `test-uart` | PASS (exit 0) | 14/14 tests PASS, `UART_CHECK_RESULT: PASS`, both monitor tokens PASS |
+| `test-uart-corrupt` | FAIL (exit 2) | Corrupted first byte rejected by UART_CHECK gate |
+
+Evidence is reproducible with `make -C sim test-uart` and `test-uart-corrupt`.
+See `doc/Phase4_UART_Test_Record.md`.
+
+**This supersedes the claim in §7 above** that C firmware has not accessed a
+peripheral: the suite now drives `THR` for TX, reads `LSR` for status, and
+verifies the wrapper read-bypass behavior of `IER`/`LCR`/`BAUD` — all through
+the integrated VeeR → AHB → AXI → UART path.
+
+**Still blocked:**
+- UART-11 (RX): `soc_top` ties `uart_rx_i` to `1'b1`.
+- Interrupt delivery: `uart_irq` is at the `soc_top` pin but not routed to the
+  VeeR PIC.
+- AES, Timer, GPIO, Network Telemetry Engine, CRC32: no RTL or address decode.

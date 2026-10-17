@@ -168,7 +168,8 @@ $(BUILD)/%.o: src/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
 
 $(BUILD)/%.o: tests/%.c include/soc.h include/test.h include/uart.h \
                include/memtest.h \
-               tests/t_bus.c tests/t_mem.c tests/memtest_core.c | $(BUILD)
+               tests/t_bus.c tests/t_mem.c tests/memtest_core.c \
+               tests/t_uart.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: probes/%.c include/soc.h include/test.h include/uart.h | $(BUILD)

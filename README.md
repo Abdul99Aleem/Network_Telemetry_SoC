@@ -245,6 +245,8 @@ git shortlog -sn --all                                       # contributors
 | — | RISC-V GNU toolchain bring-up | **PASS** | `doc/RISC_V_GNU_Toolchain_Setup_and_Validation_Record.md` |
 | M3 | UART on the SoC: AHB→AXI bridge at `0x1000_0000` + E2E testbench | **PASS** | `doc/Phase3_UART_End_To_End_Completion_Record.md` — `UART_E2E_RESULT: PASS` (`55 41 52 54 0a` + `DMEM[2]=ff` + `DMEM[4..7]=60 00 00 00`) and fabric TB1 `23/23` → `P2_TB1_RESULT: PASS`, run 2026-09-26 17:42 |
 | — | fw0 firmware on the SoC: `sw/` build → `imem.mem`/`dmem.mem` → VeeR boot → AHB R/W in Verdi | **PASS** | `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` — `P2_TB2_RESULT: PASS` + `AHB_RW_MONITOR: PASS` (`imem_rd=2393 imem_wr=0 dmem_rd=366 dmem_wr=164 bus_err=0 def=0`), gates G1–G13, run 2026-09-26 18:10 |
+| — | C test suite: Phases 0–3 (ICCM/DCCM spike, test framework, UART reporting, memory + bus tests) | **PASS** | `doc/Phase0_ICCM_DCCM_Access_Spike_Record.md`, `doc/Phase1_Test_Framework_Record.md`, `doc/Phase2_UART_Reporting_Record.md`, `doc/Phase3_Memory_and_Bus_Record.md` — 10 regression targets pass (test-fw0, test-suite, test-suite-negative, test-suite-uart-corrupt, test-memory, test-memory-negative, test-bus, test-bus-wrong-expect, test-spike-dccm, test-spike-iccm), run 2026-10-17 |
+| — | C test suite: Phase 4 (C-driven UART tests) | **PASS** | `doc/Phase4_UART_Test_Record.md` — 14/14 tests PASS (4 common + 10 UART), `UART_CHECK_RESULT: PASS`, both monitor tokens PASS, test-uart-corrupt exits 2, run 2026-10-17 |
 | M4 | AES on the SoC (bridge + driver) | **NOT STARTED** | |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |

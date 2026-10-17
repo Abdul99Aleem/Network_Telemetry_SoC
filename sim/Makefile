@@ -90,8 +90,8 @@ TB_PLUSARGS ?=
 
 .PHONY: all veer-config rtl sim run verdi wave clean help \
         test-fw0 test-spike-dccm test-spike-iccm test-suite test-suite-negative \
-        test-suite-uart-corrupt test-memory test-bus test-memory-negative \
-        test-bus-wrong-expect
+        test-suite-uart-corrupt test-memory test-memory-negative \
+        test-bus test-bus-wrong-expect test-uart test-uart-corrupt
 .DEFAULT_GOAL := all
 
 all: sim
@@ -105,6 +105,8 @@ help:
 	@echo "  test-fw0        -> frozen memory probe (frozen thresholds)"
 	@echo "  test-spike-dccm -> DCCM access probe (declares its own minima)"
 	@echo "  test-spike-iccm -> ICCM probe (declares expect_def=1 expect_buserr=2)"
+	@echo "  test-uart       -> C-driven UART tests (Phase 4)"
+	@echo "  test-uart-corrupt-> UART corruption negative control"
 	@echo "  verdi        -> open FW_FSDB with run/fw_wave.rc"
 	@echo "  clean        -> remove $(WORK)"
 
@@ -329,6 +331,34 @@ test-bus:
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
 	    EXPECT_DEF=1 EXPECT_BUSERR=1 \
 	    TB_PLUSARGS="+bus_watch +expect_def_addr=10001000"
+
+# Phase 4: C-driven UART tests. Exercises UART-01..10 through the integrated
+# VeeR path (VeeR -> AHB -> AXI -> UART -> uart_tx). The testbench decodes
+# the serial line and cross-checks against the DMEM result table.
+# Activity minima are relaxed vs fw0 because the UART-only image is shorter,
+# but uart_wr must be non-zero (the whole point is to exercise the UART).
+UART_BUILD ?= $(SW_DIR)/build/uart
+
+test-uart:
+	@rm -rf $(SW_DIR)/build/uart
+	@$(MAKE) -C $(SW_DIR) BUILD=build/uart MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_UART" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(UART_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS=+expect_uart
+
+# Negative control for UART gate: same image as test-uart, but with a
+# corrupted serial transcript. Proves the UART_CHECK gate rejects wrong output
+# even when the firmware itself completes.
+test-uart-corrupt:
+	@rm -rf $(SW_DIR)/build/uart
+	@$(MAKE) -C $(SW_DIR) BUILD=build/uart MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_UART" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(UART_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS="+expect_uart +uart_corrupt"
 
 # Negative control: proves the DMEM safety guard rejects windows that overlap
 # the result table or the stack, and still accepts the real window. Without

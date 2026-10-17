@@ -227,16 +227,17 @@ TEST_CASE(t_uart_status)
 TEST_CASE(t_negative_control)
 #endif
 
-/* Phase 3 area selection. TEST_SELECT_* is supplied by the per-variant BUILD
- * dir, so `make -C sim test-bus` links only the bus cases and `test-memory`
- * only the memory cases. Everything above is common infrastructure and is
- * always present, so a variant still proves the framework works.
+/* Phase 3/4 area selection. TEST_SELECT_* is supplied by the per-variant BUILD
+ * dir, so `make -C sim test-bus` links only the bus cases, `test-memory`
+ * only the memory cases, and `test-uart` only the UART cases. Everything
+ * above is common infrastructure and is always present, so a variant still
+ * proves the framework works.
  *
  * With no TEST_SELECT defined at all, every area is linked in — that is what
  * `test-suite` uses, and it keeps a default build from silently omitting a
  * whole test area. */
 #if !defined(TEST_SELECT_BUS) && !defined(TEST_SELECT_MEMORY) && \
-    !defined(TEST_SELECT_ALL)
+    !defined(TEST_SELECT_UART) && !defined(TEST_SELECT_ALL)
 #define TEST_SELECT_ALL
 #endif
 
@@ -250,6 +251,10 @@ TEST_CASE(t_negative_control)
  * test function and its TEST_CASE entry. */
 #include "memtest_core.c"
 #include "t_mem.c"
+#endif
+
+#if defined(TEST_SELECT_UART) || defined(TEST_SELECT_ALL)
+#include "t_uart.c"
 #endif
 
 /* ---------------------------------------------------------- serial report --
