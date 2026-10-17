@@ -120,16 +120,116 @@ _start:
     .size   _start, . - _start
 
 /* ============================================================================
- * Unreachable during fw0. Reached only if a fetch/load address error or an
- * illegal instruction escapes: park without touching the mailbox so the TB
- * watchdog reports a timeout rather than a spurious PASS.
+ * Trap handler — dual purpose (Phase 3).
+ *
+ * 1. An UNEXPECTED trap (fault/illegal instruction, or any error while no test
+ *    armed the expectation) parks exactly as before, WITHOUT touching the
+ *    mailbox, so the TB watchdog reports a timeout rather than a spurious PASS.
+ *
+ * 2. An EXPECTED trap — the Phase-3 bus tests deliberately read unmapped
+ *    addresses to prove the fabric raises an AHB ERROR and that the CPU sees
+ *    an exception. For that case the handler clears the flag and jumps to a
+ *    FIXED resume label (bus_test_resume in sw/tests/t_bus.c).
+ *
+ * WHY NOT `mepc + 4`
+ *   The VeeR bus exception is IMPRECISE. Verified trace:
+ *     hresp -> axi4_to_ahb.sv:323,344,365 -> axi_rresp 2'b10/2'b11 ->
+ *     el2_lsu_bus_buffer.sv:873 bus_rsp_read_error -> buf_error ->
+ *     lsu_imprecise_error_load_any / lsu_imprecise_error_store_any ->
+ *     lsu_pmu_bus_error (el2_veer.sv:923).
+ *   For an imprecise error mepc does not reliably identify the faulting
+ *   instruction, so resuming at mepc+4 could re-execute the faulting load and
+ *   trap forever. The resume label is a fixed symbol instead, and the C side
+ *   restores ra/sp (a longjmp-style recovery) so the interrupted frame
+ *   continues from a known state.
+ *
+ * trap_expect is a plain word in .bss, declared in sw/tests/t_bus.c. It is armed
+ * immediately before the faulting access and disarmed immediately after the
+ * access plus a fence, so the window where a trap is "expected" is as short as
+ * the test can make it.
  * ==========================================================================*/
     .align  2
     .globl  trap_handler
     .type   trap_handler, @function
 trap_handler:
+    /* Diagnostic counter: incremented on EVERY trap entry so the testbench can
+     * tell "handler never ran" apart from "handler ran but recovery failed".
+     */
+    la      t0, __trapdiag
+    lw      t1, 0(t0)
+    addi    t1, t1, 1
+    sw      t1, 0(t0)
+
+    la      t0, trap_expect
+    lw      t1, 0(t0)
+    beqz    t1, .Ltrap_park         /* unexpected: original behaviour */
+
+    li      t1, 0                   /* expected: disarm before resuming */
+    sw      t1, 0(t0)
+
+    la      t0, bus_test_resume     /* fixed resume label, NOT mepc-derived */
+    jr      t0
+
+.Ltrap_park:
 1:  j       1b
     .size   trap_handler, . - trap_handler
+
+/* ============================================================================
+ * bus_test_resume — the fixed safe resume label.
+ *
+ * Written in assembly, deliberately. An earlier version was a C function that
+ * did `mv ra, saved_ra; mv sp, saved_sp` inline: the compiler then emitted its
+ * own epilogue AFTER those stores, reloading ra from the (now stale) stack
+ * frame and adjusting sp again. The recovery was silently undone and the CPU
+ * looped forever — the bus test hung on the first unmapped access.
+ *
+ * Here there is no compiler-generated prologue or epilogue at all: restore ra
+ * and sp, then return. This is a longjmp-style recovery — no mepc-derived value
+ * is trusted, and the faulting instruction is never re-executed.
+ *
+ * saved_ra / saved_sp are captured by bus_trap_try immediately before the
+ * faulting access, and are plain globals so this code can name them.
+ * ==========================================================================*/
+    .align  2
+    .globl  bus_test_resume
+    .type   bus_test_resume, @function
+bus_test_resume:
+    la      t0, saved_ra
+    lw      t1, 0(t0)
+    mv      ra, t1
+    la      t0, saved_sp
+    lw      t1, 0(t0)
+    mv      sp, t1
+    ret
+    .size   bus_test_resume, . - bus_test_resume
+
+/* ============================================================================
+ * Recovery state for the expected-trap path.
+ *
+ * Defined HERE rather than in the C test files, and deliberately in .bss.
+ * startup.S references trap_expect / saved_ra / saved_sp unconditionally, so a
+ * variant that does not compile test_main.c (fw0, the default build, the
+ * probes) must still be able to link. Keeping the storage in this file makes
+ * that true without a weak-symbol or build-flag dance, and .bss means the
+ * startup clear loop initialises it exactly like any other mutable global.
+ * ==========================================================================*/
+    .section .bss,"aw",@nobits
+    .globl  trap_expect
+    .type   trap_expect, @object
+    .size   trap_expect, 4
+trap_expect:
+    .word   0
+    .globl  saved_ra
+    .type   saved_ra, @object
+    .size   saved_ra, 4
+saved_ra:
+    .word   0
+    .globl  saved_sp
+    .type   saved_sp, @object
+    .size   saved_sp, 4
+saved_sp:
+    .word   0
+    .text
 
     /* main() lives in main.c; provide no weak alias so a missing main is a
      * link error (gate G5/G11 catches it). */

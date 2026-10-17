@@ -265,7 +265,14 @@ module tb_veer_p2_soc
     endgenerate
     `EL2_IC_TAG_PACKED_SRAM(128,52)
 
-    // ================= reset + halt/run + PASS monitor =================
+    // ================= bus-watch control =================
+    reg     bus_watch;        // +bus_watch
+    reg     bus_done;
+    integer expect_def_for_tb, expect_buserr_for_tb;
+    logic [31:0] expect_addr_for_tb;
+    bit     addr_ok;
+
+// ================= reset + halt/run + PASS monitor =================
     // FSDB is opt-in via +wave. With -debug_access+all and a UART-enabled
     // suite running tens of milliseconds, an unconditional dump produces a
     // waveform far too large to be useful and slow enough to be skipped. The
@@ -278,6 +285,30 @@ module tb_veer_p2_soc
             $display("[TB] FSDB: enabled (+wave) -> p2_veer_soc.fsdb");
         end else begin
             $display("[TB] FSDB: disabled (pass +wave to enable)");
+        end
+    end
+
+// ================= retire / exception tracker ========================
+    // Phase 3 diagnostics. On a timeout the interesting question is whether the
+    // core ever took the exception at all, and where it stopped retiring.
+    // trace_rv_i_valid_ip pulses once per retired instruction and
+    // trace_rv_i_exception_ip marks a retired exception, so these two counters
+    // distinguish "handler never ran" from "handler ran but recovery failed".
+    // Explicitly initialised: an uninitialised integer stays X after `+ 1`, so
+    // the diagnostic would print X and prove nothing.
+    integer retire_count   = 0;
+    integer exc_count      = 0;
+    logic [31:0] last_retire_addr = 32'h0000_0000;
+    logic [4:0]  last_exc_cause   = 5'd0;
+
+    always @(posedge core_clk) begin
+        if (rst_l_combined && trace_rv_i_valid_ip) begin
+            retire_count     = retire_count + 1;
+            last_retire_addr = trace_rv_i_address_ip;
+            if (trace_rv_i_exception_ip) begin
+                exc_count     = exc_count + 1;
+                last_exc_cause = trace_rv_i_ecause_ip;
+            end
         end
     end
 
@@ -299,6 +330,15 @@ module tb_veer_p2_soc
     initial begin
         corrupt_rx = $test$plusargs("uart_corrupt");
         expect_uart = $test$plusargs("expect_uart");
+        bus_watch   = $test$plusargs("bus_watch");
+        bus_done    = 1'b0;
+        expect_def_for_tb    = 0;
+        expect_buserr_for_tb = 0;
+        void'($value$plusargs("expect_def=%d",    expect_def_for_tb));
+        void'($value$plusargs("expect_buserr=%d", expect_buserr_for_tb));
+        void'($value$plusargs("expect_def_addr=%h", expect_addr_for_tb));
+        if (bus_watch)
+            $display("[TB] BUS_CHECK: +bus_watch set - will terminate on the observed AHB ERROR");
         if (corrupt_rx)
             $display("[TB] UART_CHECK: +uart_corrupt set - byte 0 will be corrupted");
         if (expect_uart)
@@ -771,6 +811,42 @@ module tb_veer_p2_soc
         .lsu_hresp (lsu_hresp)
     );
 
+// ================= bus-error watcher ==================================
+    // Phase 3. The CPU cannot complete an access to unmapped space, so it never
+    // reaches startup.S's mailbox write and the normal monitor above can never
+    // fire. For the bus variant the termination condition is therefore the
+    // FABRIC EVIDENCE itself: once the default ERROR slave has claimed the
+    // expected address and the monitor counts match the declared expectations,
+    // the run is complete and correct.
+
+    always @(posedge core_clk) begin
+        if (rst_l_combined && bus_watch && !bus_done) begin
+            // tb_ahb_cycle_monitor exposes its counters hierarchically.
+            if (u_ahb_mon.def_sel >= 1 && u_ahb_mon.bus_err >= 1) begin
+                bus_done <= 1'b1;
+                // Counts AND the address. A correct count from the wrong address
+                // is not evidence that the intended address was exercised.
+                addr_ok = (u_ahb_mon.def_addr_count == 1) &&
+                          (u_ahb_mon.def_addr[0] == expect_addr_for_tb);
+                if (u_ahb_mon.def_sel == expect_def_for_tb &&
+                    u_ahb_mon.bus_err == expect_buserr_for_tb && addr_ok) begin
+                    $display("[%0t] BUS_CHECK: PASS (fabric returned ERROR: addr=0x%08h def=%0d bus_err=%0d)",
+                             $time, u_ahb_mon.def_addr[0], u_ahb_mon.def_sel,
+                             u_ahb_mon.bus_err);
+                    $display("[%0t] BUS_CHECK_RESULT: PASS", $time);
+                    $finish;
+                end else begin
+                    $display("[%0t] BUS_CHECK: FAIL (addr=0x%08h want 0x%08h addr_ok=%0b; def=%0d want %0d; bus_err=%0d want %0d)",
+                             $time, u_ahb_mon.def_addr[0], expect_addr_for_tb,
+                             addr_ok, u_ahb_mon.def_sel, expect_def_for_tb,
+                             u_ahb_mon.bus_err, expect_buserr_for_tb);
+                    $display("[%0t] BUS_CHECK_RESULT: FAIL", $time);
+                    $finish;
+                end
+            end
+        end
+    end
+
     initial begin
         #16000000;
         // Also dump the Phase-0 spike fields on timeout. A trap parks the CPU
@@ -784,6 +860,24 @@ module tb_veer_p2_soc
                  {u_soc.u_dmem.mem[15], u_soc.u_dmem.mem[14],
                   u_soc.u_dmem.mem[13], u_soc.u_dmem.mem[12]});
         dump_test_results();
+        // Trap diagnostic. `entries` is the counter startup.S:trap_handler
+        // increments on every entry; 0 means the handler never ran at all,
+        // which points at the exception not being delivered rather than at the
+        // recovery code. It lives at the linker-fixed __trapdiag address
+        // (DMEM 0x0001_000C == byte offset 0x0C), so the TB can read it.
+        //
+        // trap_expect / saved_ra / saved_sp / resumed_ok are ordinary .bss
+        // globals whose addresses depend on the layout, so the TB cannot read
+        // them by index. They are NOT printed here; an earlier version read
+        // bytes 0x10..0x17, which is the .results header (magic/ntests) and
+        // printed those as if they were trap state. The trap path is currently
+        // not exercised by any test (a bus response error does not trap on this
+        // core — see sw/tests/t_bus.c), so this is diagnostic only.
+        $display("[%0t] TRACEDIAG retired=%0d last_pc=0x%08h exceptions_taken=%0d last_ecause=%0d",
+                 $time, retire_count, last_retire_addr, exc_count, last_exc_cause);
+        $display("[%0t] TRAPDIAG entries=%0d", $time,
+                 {u_soc.u_dmem.mem[15], u_soc.u_dmem.mem[14],
+                  u_soc.u_dmem.mem[13], u_soc.u_dmem.mem[12]});
         $display("[%0t] P2_TB2_RESULT: TIMEOUT FAIL", $time);
         $finish;
     end

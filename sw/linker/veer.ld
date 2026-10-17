@@ -106,12 +106,11 @@ SECTIONS
     __bss_size = SIZEOF(.bss);
 
     /* ---- end of the loaded image in IMEM ---------------------------------
-     * Highest IMEM address occupied by .data's load image, i.e. the first
-     * byte beyond everything $readmemh will have written. A memory test must
-     * begin scratch at or above this, or it overwrites its own code. Gate G15
-     * checks the arithmetic; nothing in this script can enforce it for a raw
-     * pointer store, so the symbol is exported for the test code to read. */
-    __imem_image_end = __data_load + __data_size;
+     * Highest IMEM address occupied by anything $readmemh will have written:
+     * the .data load image AND the .test_list registry (which the suite's
+     * imem.mem rule now emits explicitly). A memory test must begin scratch at
+     * or above this, or it overwrites its own code or its own test table. */
+    __imem_image_end = MAX(__data_load + __data_size, __test_list_end);
 
     /* ---- stack: grows down from the top of DMEM ------------------------ */
     __stack_top  = ORIGIN(DMEM) + LENGTH(DMEM);   /* 0x0001_8000 */
@@ -120,6 +119,21 @@ SECTIONS
     /* ---- mailbox reservation (written by startup.S, read by the TB) ---- */
     __mbox_base = ORIGIN(MBOX);                   /* 0x0001_0000 */
     __mbox_size = LENGTH(MBOX);
+
+    /* Trap diagnostic. startive.S increments it on every trap entry, and the
+     * testbench prints it on timeout, so "did the handler run at all?" is a
+     * question the log answers instead of one only a waveform can. Placed in
+     * the mailbox reservation, which the suite never otherwise writes. */
+    __trapdiag = __mbox_base + 12;               /* DMEM 0x0001_000C */
+
+    /* ---- bounds consumed by the Phase 3 memory tests -------------------
+     * Every destructive pattern in the suite is bounded by these rather than
+     * by hard-coded addresses, so a change to the map above cannot silently
+     * redirect a test into .results, .bss or the stack. The ASSERTs at the
+     * bottom prove they stay ordered.
+     */
+    __memtest_dmem_scratch_lo = ((__bss_end + 31) & ~31);   /* word-align */
+    __memtest_dmem_scratch_hi = __stack_top - 0x1000;       /* 4 KB stack */
 
     /DISCARD/ :
     {
@@ -161,6 +175,30 @@ ASSERT(!((ADDR(.text)   >= 0xEE000000 && ADDR(.text)   < 0xEE010000) ||
          (ADDR(.data)   >= 0xF0040000 && ADDR(.data)   < 0xF0050000) ||
          (__bss_start   >= 0xF0040000 && __bss_start   < 0xF0050000)),
        "a section landed in an ICCM/DCCM core-local region (Mode 1 violation)")
+
+/* ================= memory-test safety guardrails (Phase 3) ============== */
+
+/* The DMEM scratch window must sit strictly above everything the runner owns
+ * and strictly below the stack. If any of these ever failed, a memory test
+ * could overwrite its own result table and still report PASS, because the
+ * result table is the thing doing the reporting. */
+ASSERT(__memtest_dmem_scratch_lo >= __bss_end,
+       "DMEM test scratch overlaps .bss")
+ASSERT(__memtest_dmem_scratch_lo >= __results_end,
+       "DMEM test scratch overlaps .results")
+ASSERT(__memtest_dmem_scratch_hi <= __stack_top,
+       "DMEM test scratch reaches into the stack")
+ASSERT(__memtest_dmem_scratch_hi > __memtest_dmem_scratch_lo,
+       "DMEM test scratch window is empty")
+
+/* IMEM scratch starts above the whole loaded image: .text, .rodata, .test_list
+ * and the .data LMA all live below __imem_image_end. */
+ASSERT(__imem_image_end >= ADDR(.text) + SIZEOF(.text),
+       "__imem_image_end does not cover .text")
+ASSERT(__imem_image_end >= ADDR(.test_list) + SIZEOF(.test_list),
+       "__imem_image_end does not cover the test registry")
+ASSERT(__imem_image_end + 0x0400 <= 0x00008000,
+       "less than 1 KB of IMEM scratch above the image")
 
 /* ================= test-framework guardrails (Phase 1) ====================
  *

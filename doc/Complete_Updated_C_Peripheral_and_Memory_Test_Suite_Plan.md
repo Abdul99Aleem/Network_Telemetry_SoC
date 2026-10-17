@@ -158,6 +158,20 @@ Expected ERROR tests require a designed trap mechanism. The current trap handler
 
 ### 5.3.1 Verified error-propagation path (2026-10-17)
 
+> **CORRECTION 2026-10-17 (Phase 3).** The section below was written from the
+> Phase 0 observation that an ICCM access "trapped and parked". That was **not**
+> a bus response error — it was an instruction-access fault. Measurement in
+> Phase 3 settled the question: **an AHB ERROR response does not raise a trap
+> at all.** `el2_lsu_lsc_ctl.sv:210` is the only producer of an LSU exception
+> (`access_fault_m | misaligned_fault_m | lsu_double_ecc_error_m`); a bus
+> response error is not in that list. It surfaces only as `lsu_pmu_bus_error`
+> (`el2_veer.sv:923`), whose sole consumer is a PMU event hit vector
+> (`el2_dec_tlu_ctl.sv:2651`). So a CPU-issued unmapped access **stalls the
+> core**; it does not trap. The trap machinery is retained only for the one
+> case that does trap — a PMP-denied access — and BUS-05/06/07 are verified at
+> the fabric by the testbench (`+bus_watch`). See
+> `doc/Phase3_Memory_and_Bus_Record.md` §2.
+
 An AHB ERROR response **does** reach the CPU as an exception. Traced through the
 frozen VeeR submodule:
 
@@ -480,7 +494,7 @@ unexpected count reports as a mismatch rather than as "!= 0".
 | 0 | ICCM/DCCM permission spike | None | **COMPLETE** — DCCM reachable, ICCM not. Scope decision recorded (`doc/Phase0_ICCM_DCCM_Access_Spike_Record.md`) |
 | 1 | Test framework, linker result table, test discovery, G14/G15 | Existing fw0 flow | Build passes; empty test list reports correctly; G1–G15 pass |
 | 2 | UART reporting, DMEM results dump, serial receiver, timeout/wave strategy | Phase 1 | Deliberately failing test is visible in UART and DMEM; simulation fails correctly |
-| 3 | Memory and AHB bus tests | Phases 1–2; Phase 0 for ICCM/DCCM | Safe patterns pass; expected-error path works; existing bus regression stays green |
+| 3 | Memory and AHB bus tests | Phases 1–2; Phase 0 for ICCM/DCCM | **COMPLETE** — safe patterns pass; expected-error path works (redesigned around the no-trap finding, §5.3.1); existing bus regression stays green (`doc/Phase3_Memory_and_Bus_Record.md`) |
 | 4 | C-driven UART tests | Phases 1–2 | UART cases pass through the integrated VeeR path |
 | 5a | AES AHB decode, bridge, SoC instantiation and IRQ wiring | Explicit design decision; preserve fabric regression | Existing T1–T14 fabric tests pass unchanged plus AES integration test passes |
 | 5b | AES C driver and known-answer tests | Phase 5a | Ciphertext, status and IRQ match reference |
@@ -505,14 +519,14 @@ The suite is complete only when all applicable statements below are supported by
 
 - [ ] Existing firmware gates G1–G13 remain green; G14/G15 are added and pass.
 - [ ] `P2_TB2_RESULT: PASS` and `AHB_RW_MONITOR: PASS` remain present for the relevant firmware run.
-- [ ] Every discovered test has a result-table entry and stable test ID.
-- [ ] The UART transcript reports each test outcome.
-- [ ] Intentional failure produces a nonzero test entry, correct first-failure fields, and final simulation FAIL.
-- [ ] IMEM/DMEM safety bounds and reserved regions are enforced.
-- [ ] ICCM/DCCM tests run only if Phase 0 establishes safe access.
-- [ ] Current UART C-driven tests pass and the pre-existing Python-generated UART E2E regression remains green.
-- [ ] Unmapped-address tests handle expected traps without hanging, resuming at a fixed label (§5.3.1).
-- [ ] `tb_ahb_cycle_monitor` carries expected-error counts and reports an unexpected count as a failure (§6.2).
+- [x] Every discovered test has a result-table entry and stable test ID.
+- [x] The UART transcript reports each test outcome.
+- [x] Intentional failure produces a nonzero test entry, correct first-failure fields, and final simulation FAIL.
+- [x] IMEM/DMEM safety bounds and reserved regions are enforced.
+- [x] ICCM/DCCM tests run only if Phase 0 establishes safe access.
+- [ ] Current UART C-driven tests pass and the pre-existing Python-generated UART E2E regression remains green. *(Phase 4)*
+- [x] Unmapped-address tests handle expected traps without hanging, resuming at a fixed label (§5.3.1). *(Redesigned: a bus response error does not trap on this core — see the §5.3.1 correction and `doc/Phase3_Memory_and_Bus_Record.md` §2.)*
+- [x] `tb_ahb_cycle_monitor` carries expected-error counts and reports an unexpected count as a failure (§6.2).
 - [ ] AES C tests are not enabled until AES is integrated into the SoC fabric.
 - [ ] Timer/GPIO/Network/CRC C tests are not enabled until corresponding RTL and decode exist.
 - [ ] Interrupt tests are not enabled until `soc_top` has interrupt input ports and the VeeR PIC is wired (§5.10).

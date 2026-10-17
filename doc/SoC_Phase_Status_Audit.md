@@ -402,6 +402,44 @@ Concretely, the minimum credible M4 is:
 Steps 1-2 close the single largest credibility gap in the project and reuse
 existing, already-passing infrastructure. Step 3 is the actual M4.
 
+---
+
+## 9. Update 2026-10-17 — C peripheral/memory test suite (Phases 0–3)
+
+The C test suite described in
+`doc/Complete_Updated_C_Peripheral_and_Memory_Test_Suite_Plan.md` has now landed
+Phases 0–3 on branch `feature/c-peripheral-test-suite`. This supersedes the
+"C firmware has accessed no peripheral" headline above for the **memory and
+UART-status** paths; it does **not** make AES, Timer, GPIO, Network or CRC
+reachable.
+
+| Phase | Result | Record |
+|---|---|---|
+| 0 — ICCM/DCCM spike | DCCM reachable (`dccm_rb=5a5a5678`); ICCM not (IFU-driven, no LSU data route) | `doc/Phase0_ICCM_DCCM_Access_Spike_Record.md` |
+| 1 — test framework | suite PASSES; negative control FAILS as designed; fw0 regression preserved | `doc/Phase1_Test_Framework_Record.md` |
+| 2 — UART reporting | per-test transcript, UART↔DMEM cross-check, `+wave` gate | `doc/Phase2_UART_Reporting_Record.md` |
+| 3 — memory + bus | IMEM/DMEM/DCCM patterns pass; BUS-05/06/07 verified at the fabric | `doc/Phase3_Memory_and_Bus_Record.md` |
+
+Evidence is reproducible with `make -C sim test-memory`, `test-bus`,
+`test-suite`, `test-suite-negative`, `test-suite-uart-corrupt`,
+`test-memory-negative`, `test-bus-wrong-expect`, `test-spike-dccm`,
+`test-spike-iccm`, and `test-fw0`.
+
+**Correction to §7 above.** The claim "C firmware has accessed a peripheral
+(it has not)" is no longer true for the UART-status register and for the
+core-local memories: the suite reads `LSR` (`0x10000014`) and runs
+store/load patterns over IMEM, DMEM and DCCM. It remains true for AES, Timer,
+GPIO, the Network Telemetry Engine and CRC32 — none of those decode on the AHB
+fabric, and the bus test asserts that an access to `0x10001000` reaches the
+default ERROR slave.
+
+**One finding worth flagging.** An AHB ERROR response does **not** raise a trap
+on this core; it only feeds a PMU counter. The original plan's assumption that
+BUS-10 could resume from a fixed label after an imprecise exception was
+therefore wrong, and the bus test is redesigned to be observed at the fabric.
+See `doc/Phase3_Memory_and_Bus_Record.md` §2.
+
+
 Two documentation defects should be fixed alongside: re-run and capture the
 isolated UART AXI benches (§5.2), and correct `README.md:243` and `:245` to
 cite surviving logs rather than stale records.

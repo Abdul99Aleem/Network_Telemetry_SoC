@@ -66,12 +66,19 @@ MIN_IMEM_RD   ?= 8
 MIN_DMEM_RD   ?= 16
 MIN_DMEM_WR   ?= 16
 
+# Upper bound on writes into IMEM. Default 0 keeps the original canary strict
+# for every image that has no business writing code memory (fw0, the probes).
+# Only the Phase-3 memory variant, whose IMEM test deliberately writes scratch
+# ABOVE __imem_image_end, declares a different bound.
+MAX_IMEM_WR   ?= 0
+
 MON_EXPECT_PLUSARGS := \
     +expect_def=$(EXPECT_DEF) \
     +expect_buserr=$(EXPECT_BUSERR) \
     +min_imem_rd=$(MIN_IMEM_RD) \
     +min_dmem_rd=$(MIN_DMEM_RD) \
-    +min_dmem_wr=$(MIN_DMEM_WR)
+    +min_dmem_wr=$(MIN_DMEM_WR) \
+    +max_imem_wr=$(MAX_IMEM_WR)
 
 # Runtime testbench options, appended per target.
 #   +expect_uart  require and verify the serial transcript (suite only; fw0
@@ -83,7 +90,8 @@ TB_PLUSARGS ?=
 
 .PHONY: all veer-config rtl sim run verdi wave clean help \
         test-fw0 test-spike-dccm test-spike-iccm test-suite test-suite-negative \
-        test-suite-uart-corrupt
+        test-suite-uart-corrupt test-memory test-bus test-memory-negative \
+        test-bus-wrong-expect
 .DEFAULT_GOAL := all
 
 all: sim
@@ -159,28 +167,54 @@ run:
 	@echo "[SIM] expect: $(MON_EXPECT_PLUSARGS) $(TB_PLUSARGS)"
 	cd $(WORK) && ./simv $(MON_EXPECT_PLUSARGS) $(TB_PLUSARGS) -l $(WORK)/sim.log
 	@echo "[SIM] ---- gate: plan §5.2, both tokens required ----"
-	@grep -q "P2_TB2_RESULT: PASS" $(WORK)/sim.log || \
-	    { echo "[SIM] FAIL: no 'P2_TB2_RESULT: PASS'"; \
-	      grep -n "P2_TB2_RESULT" $(WORK)/sim.log; exit 1; }
-	@echo "[SIM] PASS  P2_TB2_RESULT: PASS   (spec §22 fw0 — pre-existing monitor, unmodified)"
-	@grep -q "AHB_RW_MONITOR: PASS" $(WORK)/sim.log || \
+	@case "$(TB_PLUSARGS)" in *+bus_watch*) \
+	    grep -q "BUS_CHECK_RESULT: PASS" $(WORK)/sim.log || \
+	    { echo "[SIM] FAIL: BUS_CHECK_RESULT is not PASS"; \
+	      grep -n "BUS_CHECK\|DEFAULT slave" $(WORK)/sim.log; exit 1; }; \
+	    echo "[SIM] PASS  BUS_CHECK_RESULT: PASS   (fabric returned AHB ERROR at the declared address)"; \
+	    grep -n "BUS_CHECK\|DEFAULT slave" $(WORK)/sim.log;; \
+	 *) \
+	    if [ "$(NEG_FAIL)" = "1" ]; then \
+	      grep -q "P2_TB2_RESULT: FAIL" $(WORK)/sim.log || \
+	      { echo "[SIM] FAIL: expected a deliberate FAIL token, none found"; exit 1; }; \
+	      echo "[SIM] PASS  deliberate P2_TB2_RESULT: FAIL observed (NEG_FAIL=1)"; \
+	    else \
+	      grep -q "P2_TB2_RESULT: PASS" $(WORK)/sim.log || \
+	      { echo "[SIM] FAIL: no 'P2_TB2_RESULT: PASS'"; \
+	        grep -n "P2_TB2_RESULT" $(WORK)/sim.log; exit 1; }; \
+	      echo "[SIM] PASS  P2_TB2_RESULT: PASS   (spec §22 fw0 — pre-existing monitor, unmodified)"; \
+	    fi; \
+	    grep -q "AHB_RW_MONITOR: PASS" $(WORK)/sim.log || \
 	    { echo "[SIM] FAIL: no 'AHB_RW_MONITOR: PASS'"; \
-	      grep -n "AHB_RW_MONITOR\|AHB_CYCLES\|FAIL reason" $(WORK)/sim.log; exit 1; }
-	@echo "[SIM] PASS  AHB_RW_MONITOR: PASS   (plan §5.2 — read/write proof)"
-	@grep -n "AHB_CYCLES\|AHB_RW_MONITOR\|P2_TB2_RESULT" $(WORK)/sim.log
+	      grep -n "AHB_RW_MONITOR\|AHB_CYCLES\|FAIL reason" $(WORK)/sim.log; exit 1; }; \
+	    echo "[SIM] PASS  AHB_RW_MONITOR: PASS   (plan §5.2 — read/write proof)";; \
+	esac
+	@# Informational only. `|| true` matters: on a +bus_watch run none of these
+	@# tokens exist, and a grep with no matches would otherwise become the
+	@# recipe's exit status and fail a run whose BUS_CHECK actually passed.
+	@grep -n "AHB_CYCLES\|AHB_RW_MONITOR\|P2_TB2_RESULT" $(WORK)/sim.log || true
 	@# When the target asked for a transcript, its absence is a failure.
 	@# A missing UART_CHECK_RESULT means the bench never reached the check,
 	@# which must not be mistaken for a pass.
-	@case "$(TB_PLUSARGS)" in *+expect_uart*) \
-	    grep -q "UART_CHECK_RESULT: \(PASS\|FAIL\)" $(WORK)/sim.log || \
-	    { echo "[SIM] FAIL: +expect_uart was set but no UART_CHECK_RESULT token"; \
-	      grep -n "UART" $(WORK)/sim.log; exit 1; };; \
-	  *) ;; esac
-	@case "$(TB_PLUSARGS)" in *+expect_uart*) \
-	    grep -q "UART_CHECK_RESULT: PASS" $(WORK)/sim.log || \
-	    { echo "[SIM] FAIL: UART_CHECK_RESULT is not PASS"; \
-	      grep -n "UART_CHECK" $(WORK)/sim.log; exit 1; };; \
-	  *) ;; esac
+	@# Terminal-condition dispatch. +bus_watch means the CPU cannot complete the
+	@# unmapped access, so it never writes the mailbox and the mailbox tokens do
+	@# not exist for this variant; its verdict is BUS_CHECK_RESULT instead.
+	@case "$(TB_PLUSARGS)" in \
+	 *+bus_watch*) \
+	    grep -q "BUS_CHECK_RESULT: PASS" $(WORK)/sim.log || \
+	    { echo "[SIM] FAIL: BUS_CHECK_RESULT is not PASS"; \
+	      grep -n "BUS_CHECK" $(WORK)/sim.log; exit 1; };; \
+	 *+expect_uart*) \
+	    if [ "$(NEG_FAIL)" = "1" ]; then \
+	      grep -q "P2_TB2_RESULT: FAIL" $(WORK)/sim.log || \
+	      { echo "[SIM] FAIL: expected a deliberate failure and got none"; exit 1; }; \
+	      echo "[SIM] PASS  deliberate failure observed (NEG_FAIL=1)"; \
+	    else \
+	      grep -q "UART_CHECK_RESULT: PASS" $(WORK)/sim.log || \
+	      { echo "[SIM] FAIL: UART_CHECK_RESULT is not PASS"; \
+	        grep -n "UART_CHECK" $(WORK)/sim.log; exit 1; }; \
+	    fi;; \
+	 *) ;; esac
 	@echo "[SIM] G13  firmware.ihex never reached the sim dir:"
 	@if ls $(WORK)/*.ihex >/dev/null 2>&1; then \
 	    echo "[SIM] FAIL G13: Intel HEX found in $(WORK)"; exit 1; \
@@ -203,6 +237,9 @@ test-fw0:
 # DCCM probe — PASSES P2_TB2_RESULT but makes far fewer DMEM accesses than
 # fw0, so it declares its own (lower, still enforced) activity minima.
 test-spike-dccm:
+	@rm -rf $(SW_DIR)/build/spike_dccm
+	@$(MAKE) -C $(SW_DIR) BUILD=build/spike_dccm MAIN_SRC=probes/spike.c \
+	    EXTRA_CFLAGS=-DSPIKE_ONLY_DCCM all >/dev/null
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/spike_dccm \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
@@ -212,6 +249,9 @@ test-spike-dccm:
 # load, both HRESP). Declares the exact expected error counts, so this is a
 # precise assertion rather than a tolerated failure.
 test-spike-iccm:
+	@rm -rf $(SW_DIR)/build/spike_iccm
+	@$(MAKE) -C $(SW_DIR) BUILD=build/spike_iccm MAIN_SRC=probes/spike.c \
+	    EXTRA_CFLAGS=-DSPIKE_ONLY_ICCM all >/dev/null
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/spike_iccm \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=1 MIN_DMEM_WR=1 \
@@ -219,31 +259,107 @@ test-spike-iccm:
 
 # C test suite (Phase 2) — must PASS. Image built with MAIN_SRC=tests/test_main.c.
 # +expect_uart: the suite reports over the serial line, so the transcript is
-# decoded and cross-checked against the DMEM table.
+# decoded and cross-checked against the DMEM table. Builds its own image so the
+# target is self-contained and does not depend on a stale build directory.
 test-suite:
+	@rm -rf $(SW_DIR)/build/suite
+	@$(MAKE) -C $(SW_DIR) BUILD=build/suite MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_ALL $(MEM_WINDOW_FLAGS)" all >/dev/null
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/suite \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
-	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 MAX_IMEM_WR=$(MEM_MAX_IMEM_WR) \
 	    TB_PLUSARGS=+expect_uart
 
 # Negative control — same image plus -DTEST_NEGATIVE_CONTROL, so the suite must
 # FAIL. Proves the assertion machinery and the mailbox FAIL path both work.
 test-suite-negative:
+	@rm -rf $(SW_DIR)/build/suite_neg
+	@$(MAKE) -C $(SW_DIR) BUILD=build/suite_neg MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_NEGATIVE_CONTROL $(MEM_WINDOW_FLAGS)" all >/dev/null
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/suite_neg \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
-	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 MAX_IMEM_WR=$(MEM_MAX_IMEM_WR) \
 	    TB_PLUSARGS=+expect_uart
 
 # Negative control for the UART gate itself: +uart_corrupt rewrites the first
 # captured byte, so UART_CHECK must FAIL and the run must exit non-zero.
 test-suite-uart-corrupt:
+	@rm -rf $(SW_DIR)/build/suite
+	@$(MAKE) -C $(SW_DIR) BUILD=build/suite MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_ALL $(MEM_WINDOW_FLAGS)" all >/dev/null
 	@$(MAKE) run \
 	    SW_BUILD=$(SW_DIR)/build/suite \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
-	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 MAX_IMEM_WR=$(MEM_MAX_IMEM_WR) \
 	    TB_PLUSARGS="+expect_uart +uart_corrupt"
+
+# Phase 3: memory tests. Windows are deliberately bounded for the first run so
+# the safe ranges and the runtime are measured before committing to a full sweep.
+# Activity minima are declared explicitly per decision D1 and are NOT relaxed:
+# an under-specified run fails, which is what makes the PASS meaningful.
+MEM_WINDOW_FLAGS ?= -DMEMTEST_WINDOW_DMEM=512 -DMEMTEST_WINDOW_IMEM=256 \
+                   -DMEMTEST_WINDOW_DCCM=512 -DMEMTEST_STRIDE=64
+MEM_BUILD       ?= $(SW_DIR)/build/mem
+# IMEM scratch writes are intentional here and bounded above __imem_image_end
+# by the linker; the monitor still caps them so a runaway cannot go unnoticed.
+MEM_MAX_IMEM_WR ?= 256
+
+test-memory:
+	@rm -rf $(SW_DIR)/build/mem
+	@$(MAKE) -C $(SW_DIR) BUILD=build/mem MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_MEMORY $(MEM_WINDOW_FLAGS)" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(MEM_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 MAX_IMEM_WR=$(MEM_MAX_IMEM_WR) \
+	    TB_PLUSARGS=+expect_uart
+
+# Phase 3: bus tests. These deliberately provoke three AHB ERROR responses per
+# unmapped address (three probes each), so the monitor expectations are
+# non-zero and must be stated, not assumed. expect_def_addrs pins WHICH
+# addresses produced them -- a correct count from the wrong address fails.
+BUS_BUILD ?= $(SW_DIR)/build/bus
+
+test-bus:
+	@rm -rf $(SW_DIR)/build/bus
+	@$(MAKE) -C $(SW_DIR) BUILD=build/bus MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_BUS" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(BUS_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=1 EXPECT_BUSERR=1 \
+	    TB_PLUSARGS="+bus_watch +expect_def_addr=10001000"
+
+# Negative control: proves the DMEM safety guard rejects windows that overlap
+# the result table or the stack, and still accepts the real window. Without
+# this, a regression that loosened memtest_region_safe() would let a
+# destructive pattern overwrite the reporting machinery and still report PASS.
+#
+# This is a genuine negative control: the image is built with
+# -DMEMTEST_GUARD_BROKEN, which makes memtest_region_safe() accept every window,
+# so the guard test's "must refuse" assertions MUST fail. The suite therefore
+# reports FAIL, and the target requires that FAIL (NEG_FAIL=1) — a guard test
+# that could not detect a loosened guard would exit 0 here, which is the bug
+# this target exists to catch.
+test-memory-negative:
+	@rm -rf $(SW_DIR)/build/mem_neg
+	@$(MAKE) -C $(SW_DIR) BUILD=build/mem_neg MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_MEMORY -DMEMTEST_GUARD_BROKEN=1 \
+	                   $(MEM_WINDOW_FLAGS)" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(SW_DIR)/build/mem_neg \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 MAX_IMEM_WR=$(MEM_MAX_IMEM_WR) \
+	    TB_PLUSARGS=+expect_uart \
+	    NEG_FAIL=1
+
+# Negative control: declare the WRONG expected error counts for the bus tests.
+# The monitor must reject the mismatch even though the firmware did exactly what
+# it was asked to do.
+test-bus-wrong-expect:
+	@$(MAKE) run SW_BUILD=$(BUS_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=4 EXPECT_BUSERR=1 \
+	    TB_PLUSARGS="+bus_watch +expect_def_addr=10001000"
 
 # ---------------------------------------------------------------------------
 # Verdi (plan §5.3 — the waveform half of the evidence)

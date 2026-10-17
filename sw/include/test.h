@@ -109,6 +109,11 @@ void test_record_failure(const char *name, uint32_t code,
  * failure is attributed to the right row without any string matching. */
 void test_set_current(uint32_t idx);
 
+/* The live result table, so a memory test can assert that its own destructive
+ * patterns did NOT reach the reporting machinery. Declared here rather than
+ * duplicated: test_main.c owns the single definition. */
+extern volatile test_results_hdr_t results;
+
 /* ------------------------------------------------------------ assertions --
  * Every macro records the failure and returns non-zero from the enclosing
  * test. Volatile-qualified operands are preserved through the cast so an MMIO

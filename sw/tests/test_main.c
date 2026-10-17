@@ -46,12 +46,80 @@ extern const test_case_t __test_list_end[];
  * imem.mem / dmem.mem. Deliberately not in .bss: startup.S clears .bss before
  * main() runs, and the table must survive that. */
 __attribute__((section(".results"), used))
-static volatile test_results_hdr_t results;
+volatile test_results_hdr_t results;
 
 __attribute__((section(".results"), used))
 static volatile test_results_ent_t entries[RESULTS_MAX_ENT];
 
 #define ENTRY_NOT_RUN 0xFFFFFFFFu
+
+/* ------------------------------------------------------------------ trap --
+ * Defined HERE rather than in t_bus.c so every variant links the trap
+ * machinery. startup.S:trap_handler refers to trap_expect and
+ * bus_test_resume by name unconditionally, so an image without them fails to
+ * link -- which would mean the memory-only and default images could not have a
+ * correctly-parking trap handler.
+ *
+ * Recovery is longjmp-style: startup.S jumps to the fixed label
+ * bus_test_resume, which restores the ra/sp captured immediately before the
+ * faulting access. Nothing is derived from mepc, because the VeeR bus
+ * exception is imprecise (see t_bus.c for the traced path).
+ */
+/* trap_expect / saved_ra / saved_sp are DEFINED in startup.S's .bss, not here,
+ * because startup.S references them unconditionally and must therefore link
+ * into every variant. Declared here because this file is what writes them. */
+extern volatile uint32_t trap_expect;
+extern uint32_t   saved_ra;
+extern uint32_t   saved_sp;
+/* Published so the testbench can print them on timeout: TRAPDIAG entries=N,
+ * trap_expect=N, resumed_ok=N. Without this, "handler never ran" and
+ * "recovery failed" look identical in the log. */
+volatile uint32_t resumed_ok;
+
+/* Used by t_bus.c. Returns 1 if the expected trap was taken and recovery
+ * completed, 0 if the access completed with no exception at all. */
+uint32_t bus_trap_try(volatile uint32_t *p)
+{
+    uint32_t ra_in, sp_in;
+    uint32_t sink;
+
+    __asm__ volatile("mv %0, ra" : "=r"(ra_in));
+    __asm__ volatile("mv %0, sp" : "=r"(sp_in));
+    saved_ra = ra_in;
+    saved_sp = sp_in;
+
+    resumed_ok  = 0u;
+    trap_expect = 1u;
+
+    /* STORE, not load: an LSU exception comes only from access_fault /
+     * misaligned_fault / double_ecc (el2_lsu_lsc_ctl.sv:210). A bus response
+     * error never traps -- it only feeds a performance counter via
+     * lsu_pmu_bus_error. A LOAD therefore never receives data and the core
+     * stalls forever. A STORE completes once its address phase is accepted, so
+     * the fabric still returns ERROR (recorded by the monitor) without wedging
+     * the pipeline. */
+    *p = 0xDEADBEEFu;
+    sink = 0u;
+    (void)sink;
+
+    /* Drain the LSU so a late error, if any, is delivered HERE rather than
+     * after the flag is cleared. */
+    __asm__ volatile("fence" ::: "memory");
+
+    trap_expect = 0u;
+    return resumed_ok;
+}
+
+/* A leftover armed flag would let a later stray trap be silently absorbed
+ * instead of parking, hiding a real fault. */
+int bus_trap_release(void)
+{
+    if (trap_expect != 0u) {
+        trap_expect = 0u;
+        return 0;
+    }
+    return 1;
+}
 
 /* Index of the case currently executing, published to test_record_failure by
  * the runner. Using the index rather than a name lookup avoids the mismatch
@@ -157,6 +225,31 @@ TEST_CASE(t_dmem_roundtrip)
 TEST_CASE(t_uart_status)
 #ifdef TEST_NEGATIVE_CONTROL
 TEST_CASE(t_negative_control)
+#endif
+
+/* Phase 3 area selection. TEST_SELECT_* is supplied by the per-variant BUILD
+ * dir, so `make -C sim test-bus` links only the bus cases and `test-memory`
+ * only the memory cases. Everything above is common infrastructure and is
+ * always present, so a variant still proves the framework works.
+ *
+ * With no TEST_SELECT defined at all, every area is linked in — that is what
+ * `test-suite` uses, and it keeps a default build from silently omitting a
+ * whole test area. */
+#if !defined(TEST_SELECT_BUS) && !defined(TEST_SELECT_MEMORY) && \
+    !defined(TEST_SELECT_ALL)
+#define TEST_SELECT_ALL
+#endif
+
+#ifdef TEST_SELECT_BUS
+#include "t_bus.c"
+#endif
+
+#if defined(TEST_SELECT_MEMORY) || defined(TEST_SELECT_ALL)
+/* Single translation unit: see the note on the tests/ branch in sw/Makefile.
+ * Compiling these as separate objects as well would duplicate every static
+ * test function and its TEST_CASE entry. */
+#include "memtest_core.c"
+#include "t_mem.c"
 #endif
 
 /* ---------------------------------------------------------- serial report --

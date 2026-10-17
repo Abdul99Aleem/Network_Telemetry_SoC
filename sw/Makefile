@@ -65,7 +65,13 @@ EXTRA_CFLAGS ?=
 SRCS_BASE := $(sort $(wildcard src/*.c))
 
 ifneq ($(findstring tests/,$(MAIN_SRC)),)
-    SRCS := $(filter-out src/main.c src/lib.c,$(SRCS_BASE)) $(sort $(wildcard tests/*.c))
+# Single translation unit on purpose. tests/test_main.c #includes the area
+# files (t_bus.c, t_mem.c, memtest_core.c) so that TEST_SELECT_* decides what
+# gets compiled. Globbing tests/*.c as well compiled every one of them a
+# SECOND time as a separate object: the static test functions and their
+# TEST_CASE entries were duplicated, and the registry reported 16 cases for 8
+# tests. Only the including file is built.
+    SRCS := $(filter-out src/main.c src/lib.c,$(SRCS_BASE)) $(MAIN_SRC)
 else ifneq ($(findstring probes/,$(MAIN_SRC)),)
     SRCS := $(filter-out src/main.c src/lib.c,$(SRCS_BASE)) $(MAIN_SRC)
 else
@@ -160,7 +166,9 @@ $(BUILD)/startup.o: src/startup.S | $(BUILD)
 $(BUILD)/%.o: src/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/%.o: tests/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
+$(BUILD)/%.o: tests/%.c include/soc.h include/test.h include/uart.h \
+               include/memtest.h \
+               tests/t_bus.c tests/t_mem.c tests/memtest_core.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: probes/%.c include/soc.h include/test.h include/uart.h | $(BUILD)
@@ -175,7 +183,7 @@ $(BUILD)/lib.o: src/lib.c | $(BUILD)
 # ---------------------------------------------------------------------------
 dis: $(BUILD)/firmware.dis
 
-$(BUILD)/firmware.dis: $(BUILD)/firmware.elf
+$(BUILD)/firmware.dis: $(BUILD)/firmware.elf | $(BUILD)
 	$(OBJDUMP) -d -S --no-show-raw-insn $< > $@
 	@echo "[SW] DIS    $@"
 
@@ -184,7 +192,7 @@ $(BUILD)/firmware.dis: $(BUILD)/firmware.elf
 # ---------------------------------------------------------------------------
 ihex: $(BUILD)/firmware.ihex
 
-$(BUILD)/firmware.ihex: $(BUILD)/firmware.elf
+$(BUILD)/firmware.ihex: $(BUILD)/firmware.elf | $(BUILD)
 	$(OBJCOPY) -O ihex $< $@
 	@echo "[SW] IHEX   $@   (delivery artifact only — NEVER fed to \$$readmemh)"
 
@@ -272,7 +280,7 @@ echo "[SW] ==== G8  imem.mem / dmem.mem / firmware.ihex consistent ====="; \
 # image stopped at 0x56a, so every tc_*.name and tc_*.fn would have read as
 # zero in hardware and the first TEST_CASE call would have jumped to NULL.
 # Gate G9 now proves the image covers it.
-$(BUILD)/imem.mem: $(BUILD)/firmware.elf
+$(BUILD)/imem.mem: $(BUILD)/firmware.elf | $(BUILD)
 	$(OBJCOPY) -O verilog --verilog-data-width 1 \
 	    --only-section=.text --only-section=.rodata --only-section=.data \
 	    --only-section=.test_list \
@@ -290,7 +298,7 @@ $(BUILD)/imem.mem: $(BUILD)/firmware.elf
 # 32 KB dense array.  The fix is to override the LMA outright to the
 # VMA-relative index; --change-section-lma is applied after --change-addresses
 # so the two cannot be composed (verified: combining them yields 0x00010010).
-$(BUILD)/dmem.mem: $(BUILD)/firmware.elf
+$(BUILD)/dmem.mem: $(BUILD)/firmware.elf | $(BUILD)
 	@vma=$$($(NM) $< | awk '$$3=="__data_start"{print "0x"$$1}'); \
 	 off=$$(( vma - $(DMEM_BASE) )); \
 	 hex=$$(printf '0x%08X' $$off); \
