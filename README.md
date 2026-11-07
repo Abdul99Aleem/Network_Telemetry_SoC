@@ -345,11 +345,13 @@ worth it:
 
 ### 6.4 Current UVM Assets and Implementation Status
 
-The UVM migration has progressed with formal architectural baselines and external interface VIPs:
+The UVM verification environment is implemented, integrated with the RISC-V VeeR EL2 core and C firmware flow, and verified against the official **18-Test Verification Matrix**:
 - **Interface Boundary Analysis** (`doc/UVM_VIP_Interface_Analysis.md`): Clarifies that the only external interfaces crossing the `soc_top` boundary are the AHB-Lite IFU/LSU ports (`ifu_*`, `lsu_*`), the UART physical output (`uart_tx_o`, `uart_irq_o`), and the AES interrupt line (`aes_irq_o`). All internal AXI wires between bridge and slaves are internal and do not get independent chip-level VIPs.
-- **18-Test Simplified Testplan Matrix** (`doc/UVM_Simplified_Testplan_18_Test_Matrix.md` and `doc/UVM_Testplan_RISC-V_Network_Telemetry_SoC_Updated.xlsx`): Defines the 18 representative verification scenarios covering reset, AHB arbitration, AXI strobes, UART framing/baud, AES encryption KAT, and multi-block concurrency with signal-level pass/fail criteria and dual SV/C working principles.
+- **18-Test Simplified Testplan Matrix** (`doc/UVM_Simplified_Testplan_18_Test_Matrix.md` and `doc/UVM_Testplan_RISC-V_Network_Telemetry_SoC_Updated.xlsx`): Defines the 18 representative verification scenarios covering reset, AHB arbitration, AXI strobes, UART framing/baud, AES encryption KAT, and multi-block concurrency. All 18 tests are tracked with status and concrete verification evidence in the updated Excel testplan sheet.
 - **`veer_ahb_vip` external master agent** (`tb/veer_ahb_vip/`): Fully implemented and compiling cleanly with VCS U-2023.03 and UVM 1.2 (`make -C sim test-uvm-ahb`). Includes pipelined AHB driver with semaphore handshake, dual-port monitor with separate non-conflicting `mon_cb` clocking block, configuration object, and scoreboard.
-- **`uart_serial_vip`** (`tb/uart_serial_vip/`): Interface skeleton committed; serial monitor and scoreboard deserializer in development.
+- **`uart_serial_vip`** (`tb/uart_serial_vip/`): Fully implemented production-grade external UVM VIP (`uart_serial_agent`, `uart_serial_driver`, `uart_serial_monitor`, `uart_serial_scoreboard`, `uart_serial_coverage_subscriber`, `uart_serial_env`). Features automatic bit-period calibration, mid-bit eye oversampling, stop/start bit framing checks, spurious IRQ surveillance, and ASCII stream accumulation. Verified with `make test-uvm-uart`, `make test-uvm-uart-loopback`, and `make test-uvm-uart-framing` (0 errors).
+- **SoC-Level C-to-UVM End-to-End Integration (Milestone 3)** (`tb/soc_uvm/`): Complete chip-level testbench (`soc_uvm_tb_top.sv`, `soc_uvm_env.sv`, `soc_uvm_test.sv`) integrating the physical VeeR EL2 core with tightly-coupled behavioral SRAMs and `soc_top`. Boots compiled C firmware (`p2_prog.hex`), runs the full 14-test suite (`SUITE_BEGIN` through `SUITE_END`), and deserializes 565 bytes via `uart_serial_vip` with 0 mismatches, 0 framing errors, 0 timing errors, and confirmed DMEM mailbox status (`0x5453_4553` = `'TEST'`).
+- **Verdi Waveform Automation**: Interactive signal setups with 9 organized signal groups covering Clock/Reset, CPU Trace Port, IFU/LSU Bus, Fabric Routing, UART MMIO/Bridge, UART TX FIFO, UART PISO Shift Register, Physical Pins, and UVM VIP Monitor (`run/soc_uvm_wave.rc`, launched via `make verdi-uvm-soc` or `make wave-uvm-soc`).
 
 ---
 
@@ -357,7 +359,8 @@ The UVM migration has progressed with formal architectural baselines and externa
 
 Some notes on the current state and what I'm taking on next.
 
-1. **Phase 3 is closed: the UART end-to-end run passes.** VeeR boots through
+1. **Milestone 3 is closed: C Firmware to UVM SoC Co-Verification passes.** VeeR boots from `0x0000_0000` through the SoC fabric, executes the 14-test bare-metal C suite from project IMEM, and writes to DMEM and UART MMIO. The external `uart_serial_vip` monitor captures the 565-byte serial transcript on physical pin `uart_tx_o`, validates 90 ns baud periods, verifies stop bits, and passes all scoreboard token checks (`SUITE_BEGIN`, `PASS`, `SUITE_END`) with zero UVM errors.
+2. **Phase 3 is closed: the UART end-to-end run passes.** VeeR boots through
    the 4-slave fabric, writes THR, polls LSR, transmits `UART\n` on `uart_tx`
    (5/5 bytes, 8690 ns bit period) and stores the LSR read-back plus the `0xFF`
    terminator in DMEM — with **zero** exceptions. It took three real bugs to
