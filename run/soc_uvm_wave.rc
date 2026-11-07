@@ -31,7 +31,7 @@ COMPLEX_EVENT_END
 
 curSTATUS ByChange
 
-addGroup "1. Clock & Reset"
+addGroup "1. System Clock & Reset"
 addSignal -h 15 /soc_uvm_tb_top/core_clk
 addSignal -h 15 -holdScope rst_l
 addSignal -h 15 -holdScope porst_l
@@ -64,17 +64,44 @@ addSignal -h 15 -holdScope aes_hsel
 addSignal -h 15 -holdScope def_hsel
 addSignal -h 15 -UNSIGNED -HEX -holdScope mux_haddr[31:0]
 
-addGroup "5. UART Peripheral MMIO (0x1000_0000)"
-addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart_axi_bridge/s_ahb_hsel
-addSignal -h 15 -holdScope s_ahb_hwrite
-addSignal -h 15 -UNSIGNED -HEX -holdScope s_ahb_haddr[31:0]
-addSignal -h 15 -UNSIGNED -HEX -holdScope s_ahb_hwdata[31:0]
-addSignal -h 15 -UNSIGNED -HEX -holdScope s_ahb_hrdata[31:0]
-addSignal -h 15 -holdScope s_ahb_hreadyout
+addGroup "5. UART Peripheral MMIO & AXI Bridge"
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_ahb2axi/hsel
+addSignal -h 15 -holdScope hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope hrdata[63:0]
+addSignal -h 15 -holdScope hreadyout
+addSignal -h 15 -UNSIGNED -HEX /soc_uvm_tb_top/u_soc/u_uart/s_axi_awaddr[31:0]
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/s_axi_awvalid
+addSignal -h 15 -holdScope s_axi_awready
+addSignal -h 15 -UNSIGNED -HEX -holdScope s_axi_wdata[31:0]
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/s_axi_wvalid
+addSignal -h 15 -holdScope s_axi_wready
 
-addGroup "6. External SoC Boundary & Physical UART Pin"
+addGroup "6. UART TX Buffer / FIFO"
+addSignal -h 15 -UNSIGNED -HEX /soc_uvm_tb_top/u_soc/u_uart/u_uart/axi_internal_fifo_tx_inst/data_i[7:0]
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/axi_internal_fifo_tx_inst/push_i
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/axi_internal_fifo_tx_inst/pull_i
+addSignal -h 15 -UNSIGNED -HEX /soc_uvm_tb_top/u_soc/u_uart/u_uart/axi_internal_fifo_tx_inst/data_o[7:0]
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/axi_internal_fifo_tx_inst/full_o
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/axi_internal_fifo_tx_inst/empty_o
+
+addGroup "7. UART PISO (Parallel-In Serial-Out) Shift Register"
+addSignal -h 15 -UNSIGNED -HEX /soc_uvm_tb_top/u_soc/u_uart/u_uart/uart_controller_inst/transmitter_inst/tx_data_i[7:0]
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/uart_controller_inst/transmitter_inst/tx_send_i
+addSignal -h 15 -UNSIGNED -HEX /soc_uvm_tb_top/u_soc/u_uart/u_uart/uart_controller_inst/transmitter_inst/tx_data_int[7:0]
+addSignal -h 15 -UNSIGNED -DEC /soc_uvm_tb_top/u_soc/u_uart/u_uart/uart_controller_inst/transmitter_inst/bitcount_int[3:0]
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/uart_controller_inst/transmitter_inst/busy_o
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart/u_uart/uart_controller_inst/transmitter_inst/tx_o
+
+addGroup "8. External SoC Boundary & Physical Pins"
 addSignal -h 15 /soc_uvm_tb_top/uart_tx
 addSignal -h 15 -holdScope uart_irq
 addSignal -h 15 -holdScope aes_irq
-addSignal -h 15 /soc_uvm_tb_top/uart_if/uart_tx_o
+
+addGroup "9. UART UVM VIP Interface & Monitor"
+addSignal -h 15 /soc_uvm_tb_top/uart_if/clk
+addSignal -h 15 -holdScope reset_n
+addSignal -h 15 -holdScope uart_tx_o
 addSignal -h 15 -holdScope uart_irq_o
+addSignal -h 15 -holdScope uart_rx_i
