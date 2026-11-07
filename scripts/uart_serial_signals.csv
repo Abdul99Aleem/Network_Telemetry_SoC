@@ -1,0 +1,4 @@
+clk,input,1
+reset_n,input,1
+uart_tx_o,output,1
+uart_irq_o,output,1
