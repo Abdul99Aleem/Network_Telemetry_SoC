@@ -250,6 +250,8 @@ git shortlog -sn --all                                       # contributors
 | — | C test suite: M4a (AES on the SoC) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 tests PASS (5 AES), NIST KAT, `test-aes` exit 0, `test-aes-corrupt` exits 2, `UART_CHECK_RESULT: PASS`, run 2026-10-17 |
 | M4a | AES on the SoC (bridge + driver) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 AES tests PASS, NIST KAT ciphertext `0x70b4c55a d8cdb780 6a7b0430 69c4e0d8`, `test-aes` exit 0, `test-aes-corrupt` exits 2, `AHB_RW_MONITOR: PASS` (`def=0`), root cause fixed in `ahb_to_axi_bridge` word-lane strobe, run 2026-10-17 |
 | — | UVM VIP baseline: external AHB interface (`tb/veer_ahb_vip/`) | **PASS** | `doc/Branch_Merge_and_UVM_Implementation_Readiness_Report.md` & `make -C sim test-uvm-ahb` — 8 beats driven/monitored, 0 UVM errors, `veer_ahb_scoreboard: PASS`, run 2026-11-07 |
+| — | UVM VIP: external UART interface (`tb/uart_serial_vip/`) | **PASS** | `make -C sim test-uvm-uart` — 8N1 serial monitor & scoreboard, loopback & framing error tests pass with 0 errors, run 2026-11-07 |
+| M3-C | Full SoC C Firmware to UVM UART VIP (`tb/soc_uvm/`) | **PASS** | `doc/Milestone3_C_Firmware_and_UVM_SoC_Verification_Record.md` & `make -C sim test-uvm-soc` — 14/14 C tests, 565 serial bytes captured on `uart_tx_o`, DMEM mailbox verified, 0 errors, run 2026-11-07 |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |
 
@@ -275,7 +277,7 @@ same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 - [x] AES on the SoC through the same bridge (driver + polling; IRQ verified in two-master regression)
 - [x] UVM base VIP skeleton for external soc_top AHB interface (`tb/veer_ahb_vip/` with clocking block, sequence item, pipelined driver, dual-port monitor, scoreboard, and test runnable via `make -C sim test-uvm-ahb`)
 - [x] UVM interface analysis (`doc/UVM_VIP_Interface_Analysis.md`) and 18-test simplified testplan matrix (`doc/UVM_Simplified_Testplan_18_Test_Matrix.md` / `doc/UVM_Testplan_RISC-V_Network_Telemetry_SoC_Updated.xlsx`)
-- [ ] Layered UVM environment for remaining external interfaces (`uart_serial_vip`) and full system-level tests (18-test execution roadmap)
+- [x] Layered UVM environment for remaining external interfaces (`uart_serial_vip`) and full system-level tests (`tb/soc_uvm/`, Milestone 3-C, 18-test execution roadmap)
 - [ ] Network Telemetry Engine + CRC32/FCS (the custom contribution)
 - [ ] Bare-metal C application: init, IRQ, record assembly, crypto job, UART report
 - [ ] End-to-end packet → encrypted telemetry testbench
