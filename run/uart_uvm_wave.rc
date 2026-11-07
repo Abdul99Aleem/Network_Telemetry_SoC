@@ -1,0 +1,69 @@
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+; ============================================================
+; Project : RISC-V Network Telemetry SoC
+; File    : run/uart_uvm_wave.rc
+; Desc    : Verdi Signal Restoration Script for UVM UART VIP
+;
+; Usage:
+;   verdi -ssf uart_uvm.fsdb -dbdir simv.daidir -sswr run/uart_uvm_wave.rc &
+; ============================================================
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "uart_uvm.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 500000.000000
+cursor 0.000000
+marker 0.000000
+
+top 0
+markerPos 0
+
+curSTATUS ByChange
+
+addGroup "1 Clock & Reset"
+addSignal -h 15 /uart_serial_tb_top/clk
+addSignal -h 15 /uart_serial_tb_top/vif/reset_n
+
+addGroup "2 UART VIP Physical Pins"
+addSignal -h 15 /uart_serial_tb_top/vif/uart_tx_o
+addSignal -h 15 /uart_serial_tb_top/vif/uart_rx_i
+addSignal -h 15 /uart_serial_tb_top/vif/uart_irq_o
+addSignal -h 15 /uart_serial_tb_top/is_loopback
+
+addGroup "3 AHB-Lite LSU Bus (Stimulus)"
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/lsu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -BIN /uart_serial_tb_top/lsu_htrans[1:0]
+addSignal -h 15 /uart_serial_tb_top/lsu_hwrite
+addSignal -h 15 -UNSIGNED -BIN /uart_serial_tb_top/lsu_hsize[2:0]
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/lsu_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/lsu_hrdata[63:0]
+addSignal -h 15 /uart_serial_tb_top/lsu_hready
+addSignal -h 15 /uart_serial_tb_top/lsu_hresp
+
+addGroup "4 AHB->AXI Bridge to UART"
+addSignal -h 15 /uart_serial_tb_top/u_dut/uart_hsel
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_awvalid
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_awready
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_awaddr[31:0]
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_wvalid
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_wready
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_wdata[31:0]
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_bvalid
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_ahb2axi/m_axi_bready
+
+addGroup "5 UART TX FIFO"
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/u_dut/u_uart/u_uart/axi_internal_fifo_tx_inst/data_i[7:0]
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_uart/u_uart/axi_internal_fifo_tx_inst/push_i
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_uart/u_uart/axi_internal_fifo_tx_inst/pull_i
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/u_dut/u_uart/u_uart/axi_internal_fifo_tx_inst/data_o[7:0]
+
+addGroup "6 UART Controller & Transmitter"
+addSignal -h 15 -UNSIGNED -HEX /uart_serial_tb_top/u_dut/u_uart/u_uart/uart_controller_inst/tx_data_i[7:0]
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_uart/u_uart/uart_controller_inst/tx_load_i
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_uart/u_uart/uart_controller_inst/tx_pull_o
+addSignal -h 15 /uart_serial_tb_top/u_dut/u_uart/u_uart/uart_controller_inst/uart_tx_o

@@ -39,7 +39,7 @@ firmware inspect mem dis clean-sw:
 	$(MAKE) -C sw $(if $(filter clean-sw,$@),clean,$@)
 
 # ---- simulation (spec §8.3) ----
-veer-config rtl sim verdi wave:
+veer-config rtl sim verdi wave compile-uvm-uart test-uvm test-uvm-uart test-uvm-uart-wave verdi-uvm-uart wave-uvm-uart test-uvm-uart-loopback test-uvm-uart-framing test-uvm-ahb clean-uvm:
 	$(MAKE) -C sim $@
 
 clean:

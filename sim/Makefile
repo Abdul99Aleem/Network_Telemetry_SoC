@@ -451,8 +451,68 @@ test-uvm-ahb:
 	    echo "[SIM] PASS: veer_ahb_scoreboard passed (0 UVM_ERROR / 0 UVM_FATAL)"
 
 clean-uvm:
-	rm -rf $(UVM_WORK)
+	rm -rf $(UVM_WORK) $(UVM_UART_WORK)
+
+# ---------------------------------------------------------------------------
+# UVM VIP UART Testbench (External soc_top UART interface)
+# ---------------------------------------------------------------------------
+UVM_UART_WORK := $(REPO)/build/sim/uvm_uart
+
+compile-uvm-uart:
+	@mkdir -p $(UVM_UART_WORK)
+	@echo "[SIM] compiling UVM UART VIP testbench (uart_serial_tb_top)..."
+	cd $(UVM_UART_WORK) && vcs -full64 -sverilog -ntb_opts uvm-1.2 \
+	    -debug_access+all -kdb \
+	    +incdir+$(REPO)/tb/uart_serial_vip \
+	    $(REPO)/rtl/ahb/ahb_interconnect.sv \
+	    $(REPO)/rtl/ahb/ahb_sram.sv \
+	    $(REPO)/rtl/ahb/ahb_default_slave.sv \
+	    -f $(REPO)/run/uart_rtl.f \
+	    -f $(REPO)/run/aes_rtl.f \
+	    $(REPO)/rtl/soc_top.sv \
+	    $(REPO)/tb/uart_serial_vip/uart_serial_if.sv \
+	    $(REPO)/tb/uart_serial_vip/uart_serial_pkg.sv \
+	    $(REPO)/tb/uart_serial_vip/uart_serial_tb_top.sv \
+	    -top uart_serial_tb_top \
+	    -timescale=1ns/1ps -l compile.log
+
+test-uvm-uart: compile-uvm-uart
+	@echo "[SIM] running UVM UART VIP testbench (Test 10: SoC TX -> uart_tx_o)..."
+	cd $(UVM_UART_WORK) && ./simv +UVM_TESTNAME=uart_soc_tx_test +UVM_VERBOSITY=UVM_MEDIUM -l sim.log
+	@grep -q "uart_serial_scoreboard: PASS" $(UVM_UART_WORK)/sim.log && \
+	    echo "[SIM] PASS: uart_serial_scoreboard passed (0 UVM_ERROR / 0 UVM_FATAL)"
+
+test-uvm-uart-wave: compile-uvm-uart
+	@echo "[SIM] running UVM UART VIP testbench with FSDB waveform dumping (+wave)..."
+	cd $(UVM_UART_WORK) && ./simv +UVM_TESTNAME=uart_soc_tx_test +wave +UVM_VERBOSITY=UVM_MEDIUM -l sim.log
+	@grep -q "uart_serial_scoreboard: PASS" $(UVM_UART_WORK)/sim.log && \
+	    echo "[SIM] PASS: uart_serial_scoreboard passed (0 UVM_ERROR / 0 UVM_FATAL)"
+	@test -f $(UVM_UART_WORK)/uart_uvm.fsdb && \
+	    echo "[SIM] FSDB generated: $(UVM_UART_WORK)/uart_uvm.fsdb"
+
+verdi-uvm-uart: test-uvm-uart-wave
+	@echo "[SIM] opening Verdi (DISPLAY=$${DISPLAY:-unset}) on $(UVM_UART_WORK)/uart_uvm.fsdb"
+	cd $(UVM_UART_WORK) && verdi -ssf uart_uvm.fsdb -dbdir simv.daidir \
+	    -sswr $(REPO)/run/uart_uvm_wave.rc &
+
+wave-uvm-uart:
+	@echo "cd $(UVM_UART_WORK); setenv DISPLAY :0"
+	@echo "verdi -ssf uart_uvm.fsdb -dbdir simv.daidir -sswr $(REPO)/run/uart_uvm_wave.rc &"
+
+test-uvm-uart-loopback: compile-uvm-uart
+	@echo "[SIM] running UVM UART VIP loopback test (driver -> monitor -> scoreboard)..."
+	cd $(UVM_UART_WORK) && ./simv +UVM_TESTNAME=uart_unit_loopback_test +loopback +UVM_VERBOSITY=UVM_MEDIUM -l sim_loopback.log
+	@grep -q "uart_serial_scoreboard: PASS" $(UVM_UART_WORK)/sim_loopback.log && \
+	    echo "[SIM] PASS: uart_serial_scoreboard loopback passed (0 UVM_ERROR / 0 UVM_FATAL)"
+
+test-uvm-uart-framing: compile-uvm-uart
+	@echo "[SIM] running UVM UART VIP framing error test (Test 11)..."
+	cd $(UVM_UART_WORK) && ./simv +UVM_TESTNAME=uart_framing_error_test +loopback +UVM_VERBOSITY=UVM_MEDIUM -l sim_framing.log
+	@grep -q "PASS: Deliberate framing error was successfully detected" $(UVM_UART_WORK)/sim_framing.log && \
+	    echo "[SIM] PASS: uart_framing_error_test passed (framing error correctly detected)"
+
+test-uvm: test-uvm-ahb test-uvm-uart
 
 clean:
-	rm -rf $(WORK) $(UVM_WORK)
-	@echo "[SIM] cleaned $(WORK) and $(UVM_WORK)"
+	rm -rf $(WORK) $(UVM_WORK) $(UVM_UART_WORK)
+	@echo "[SIM] cleaned $(WORK), $(UVM_WORK), and $(UVM_UART_WORK)"
