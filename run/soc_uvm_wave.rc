@@ -1,0 +1,80 @@
+// ============================================================================
+// Project : RISC-V Network Telemetry SoC
+// Script  : run/soc_uvm_wave.rc
+// Desc    : Verdi signal setup for Milestone 3 (C Firmware <-> VeeR <-> SoC <-> UVM UART).
+//
+//           Load with:
+//             cd /home/student/Documents/honours_project/build/sim/uvm_soc
+//             setenv DISPLAY :0
+//             verdi -ssf soc_uvm.fsdb -dbdir simv.daidir \
+//                   -sswr /home/student/Documents/honours_project/run/soc_uvm_wave.rc &
+// ============================================================================
+
+Magic 271485
+Revision Verdi_U-2023.03-SP1
+
+viewPort 0 0 1600 900 260 110
+
+openDirFile -d / -i 0 "" "/home/student/Documents/honours_project/build/sim/uvm_soc/soc_uvm.fsdb"
+
+signalSpacing 5
+
+zoom 0.000000 5000000.000000
+
+top 0
+markerPos 0
+cursor 335000.000000
+marker 335000.000000
+
+COMPLEX_EVENT_BEGIN
+COMPLEX_EVENT_END
+
+curSTATUS ByChange
+
+addGroup "1. Clock & Reset"
+addSignal -h 15 /soc_uvm_tb_top/core_clk
+addSignal -h 15 -holdScope rst_l
+addSignal -h 15 -holdScope porst_l
+addSignal -h 15 -UNSIGNED -HEX -holdScope reset_vector[31:0]
+
+addGroup "2. VeeR CPU Execution (Trace Port)"
+addSignal -h 15 -holdScope trace_rv_i_valid_ip
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_rv_i_address_ip[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_rv_i_insn_ip[31:0]
+addSignal -h 15 -holdScope trace_rv_i_exception_ip
+addSignal -h 15 -UNSIGNED -HEX -holdScope trace_rv_i_ecause_ip[4:0]
+
+addGroup "3. VeeR IFU / LSU AHB Bus"
+addSignal -h 15 -UNSIGNED -HEX /soc_uvm_tb_top/ic_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_htrans[1:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope ic_hrdata[63:0]
+addSignal -h 15 -holdScope ic_hready
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_htrans[1:0]
+addSignal -h 15 -holdScope lsu_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hwdata[63:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope lsu_hrdata[63:0]
+addSignal -h 15 -holdScope lsu_hready
+
+addGroup "4. SoC AHB Fabric Routing"
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_fabric/imem_hsel
+addSignal -h 15 -holdScope dmem_hsel
+addSignal -h 15 -holdScope uart_hsel
+addSignal -h 15 -holdScope aes_hsel
+addSignal -h 15 -holdScope def_hsel
+addSignal -h 15 -UNSIGNED -HEX -holdScope mux_haddr[31:0]
+
+addGroup "5. UART Peripheral MMIO (0x1000_0000)"
+addSignal -h 15 /soc_uvm_tb_top/u_soc/u_uart_axi_bridge/s_ahb_hsel
+addSignal -h 15 -holdScope s_ahb_hwrite
+addSignal -h 15 -UNSIGNED -HEX -holdScope s_ahb_haddr[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope s_ahb_hwdata[31:0]
+addSignal -h 15 -UNSIGNED -HEX -holdScope s_ahb_hrdata[31:0]
+addSignal -h 15 -holdScope s_ahb_hreadyout
+
+addGroup "6. External SoC Boundary & Physical UART Pin"
+addSignal -h 15 /soc_uvm_tb_top/uart_tx
+addSignal -h 15 -holdScope uart_irq
+addSignal -h 15 -holdScope aes_irq
+addSignal -h 15 /soc_uvm_tb_top/uart_if/uart_tx_o
+addSignal -h 15 -holdScope uart_irq_o

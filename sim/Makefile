@@ -511,8 +511,76 @@ test-uvm-uart-framing: compile-uvm-uart
 	@grep -q "PASS: Deliberate framing error was successfully detected" $(UVM_UART_WORK)/sim_framing.log && \
 	    echo "[SIM] PASS: uart_framing_error_test passed (framing error correctly detected)"
 
-test-uvm: test-uvm-ahb test-uvm-uart
+test-uvm: test-uvm-ahb test-uvm-uart test-uvm-soc
+
+# ---------------------------------------------------------------------------
+# Milestone 3: C Firmware <-> VeeR EL2 <-> SoC Top <-> UVM UART VIP
+# ---------------------------------------------------------------------------
+UVM_SOC_WORK := $(REPO)/build/sim/uvm_soc
+
+compile-uvm-soc: veer-config
+	@mkdir -p $(UVM_SOC_WORK)
+	@echo "[SIM] compiling SoC UVM testbench (soc_uvm_tb_top with VeeR EL2 + soc_top + uart_serial_vip)..."
+	cd $(UVM_SOC_WORK) && vcs -full64 -sverilog -ntb_opts uvm-1.2 \
+	    -debug_access+all -kdb \
+	    +define+RV_OPENSOURCE \
+	    +incdir+$(RV_ROOT)/testbench \
+	    +incdir+$(RV_ROOT)/design/include \
+	    +incdir+$(SNAP) \
+	    +incdir+$(REPO)/tb/uart_serial_vip \
+	    +incdir+$(REPO)/tb/soc_uvm \
+	    $(SNAP)/common_defines.vh \
+	    $(RV_ROOT)/design/include/el2_def.sv \
+	    $(SNAP)/el2_pdef.vh \
+	    -f $(RV_ROOT)/testbench/flist \
+	    $(REPO)/rtl/ahb/ahb_interconnect.sv \
+	    $(REPO)/rtl/ahb/ahb_sram.sv \
+	    $(REPO)/rtl/ahb/ahb_default_slave.sv \
+	    -f $(REPO)/run/uart_rtl.f \
+	    -f $(REPO)/run/aes_rtl.f \
+	    $(REPO)/rtl/soc_top.sv \
+	    $(REPO)/tb/uart_serial_vip/uart_serial_if.sv \
+	    $(REPO)/tb/uart_serial_vip/uart_serial_pkg.sv \
+	    $(REPO)/tb/soc_uvm/soc_uvm_pkg.sv \
+	    $(REPO)/tb/soc_uvm/soc_uvm_tb_top.sv \
+	    -top soc_uvm_tb_top \
+	    -timescale=1ns/1ps -l compile.log
+
+test-uvm-soc: compile-uvm-soc
+	@echo "[SIM] preparing C firmware image (build/uart/imem.mem -> p2_prog.hex)..."
+	@test -s $(UART_BUILD)/imem.mem || \
+	    { export PATH=/opt/riscv/bin:$$PATH && $(MAKE) -C $(SW_DIR) BUILD=build/uart MAIN_SRC=tests/test_main.c EXTRA_CFLAGS="-DTEST_SELECT_UART" all >/dev/null; }
+	@cp $(UART_BUILD)/imem.mem $(UVM_SOC_WORK)/p2_prog.hex
+	@echo "[SIM] running Milestone 3 SoC UVM testbench (soc_c_firmware_test)..."
+	cd $(UVM_SOC_WORK) && ./simv +UVM_TESTNAME=soc_c_firmware_test +UVM_VERBOSITY=UVM_MEDIUM -l sim.log
+	@grep -q "uart_serial_scoreboard: PASS" $(UVM_SOC_WORK)/sim.log && \
+	    echo "[SIM] PASS: uart_serial_scoreboard passed (0 UVM_ERROR / 0 UVM_FATAL)"
+	@grep -q "TEST PASSED: VeeR C firmware executed and UART verified!" $(UVM_SOC_WORK)/sim.log && \
+	    echo "[SIM] PASS: VeeR C firmware executed and verified successfully in UVM!"
+
+test-uvm-soc-wave: compile-uvm-soc
+	@echo "[SIM] preparing C firmware image (build/uart/imem.mem -> p2_prog.hex)..."
+	@test -s $(UART_BUILD)/imem.mem || \
+	    { export PATH=/opt/riscv/bin:$$PATH && $(MAKE) -C $(SW_DIR) BUILD=build/uart MAIN_SRC=tests/test_main.c EXTRA_CFLAGS="-DTEST_SELECT_UART" all >/dev/null; }
+	@cp $(UART_BUILD)/imem.mem $(UVM_SOC_WORK)/p2_prog.hex
+	@echo "[SIM] running Milestone 3 SoC UVM testbench with FSDB waveform dumping (+wave)..."
+	cd $(UVM_SOC_WORK) && ./simv +UVM_TESTNAME=soc_c_firmware_test +wave +UVM_VERBOSITY=UVM_MEDIUM -l sim.log
+	@grep -q "uart_serial_scoreboard: PASS" $(UVM_SOC_WORK)/sim.log && \
+	    echo "[SIM] PASS: uart_serial_scoreboard passed (0 UVM_ERROR / 0 UVM_FATAL)"
+	@grep -q "TEST PASSED: VeeR C firmware executed and UART verified!" $(UVM_SOC_WORK)/sim.log && \
+	    echo "[SIM] PASS: VeeR C firmware executed and verified successfully in UVM!"
+	@test -f $(UVM_SOC_WORK)/soc_uvm.fsdb && \
+	    echo "[SIM] FSDB generated: $(UVM_SOC_WORK)/soc_uvm.fsdb"
+
+verdi-uvm-soc: test-uvm-soc-wave
+	@echo "[SIM] opening Verdi on $(UVM_SOC_WORK)/soc_uvm.fsdb"
+	cd $(UVM_SOC_WORK) && verdi -ssf soc_uvm.fsdb -dbdir simv.daidir \
+	    -sswr $(REPO)/run/soc_uvm_wave.rc &
+
+wave-uvm-soc:
+	@echo "cd $(UVM_SOC_WORK); setenv DISPLAY :0"
+	@echo "verdi -ssf soc_uvm.fsdb -dbdir simv.daidir -sswr $(REPO)/run/soc_uvm_wave.rc &"
 
 clean:
-	rm -rf $(WORK) $(UVM_WORK) $(UVM_UART_WORK)
-	@echo "[SIM] cleaned $(WORK), $(UVM_WORK), and $(UVM_UART_WORK)"
+	rm -rf $(WORK) $(UVM_WORK) $(UVM_UART_WORK) $(UVM_SOC_WORK)
+	@echo "[SIM] cleaned $(WORK), $(UVM_WORK), $(UVM_UART_WORK), and $(UVM_SOC_WORK)"
