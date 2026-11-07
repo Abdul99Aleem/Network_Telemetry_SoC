@@ -249,7 +249,7 @@ git shortlog -sn --all                                       # contributors
 | — | C test suite: Phase 4 (C-driven UART tests) | **PASS** | `doc/Phase4_UART_Test_Record.md` — 14/14 tests PASS (4 common + 10 UART), `UART_CHECK_RESULT: PASS`, both monitor tokens PASS, test-uart-corrupt exits 2, run 2026-10-17 |
 | — | C test suite: M4a (AES on the SoC) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 tests PASS (5 AES), NIST KAT, `test-aes` exit 0, `test-aes-corrupt` exits 2, `UART_CHECK_RESULT: PASS`, run 2026-10-17 |
 | M4a | AES on the SoC (bridge + driver) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 AES tests PASS, NIST KAT ciphertext `0x70b4c55a d8cdb780 6a7b0430 69c4e0d8`, `test-aes` exit 0, `test-aes-corrupt` exits 2, `AHB_RW_MONITOR: PASS` (`def=0`), root cause fixed in `ahb_to_axi_bridge` word-lane strobe, run 2026-10-17 |
-| — | UVM VIP baseline: external AHB interface (`tb/veer_ahb_vip/`) | **PASS** | `make -C sim test-uvm-ahb` — 8 beats driven/monitored, 0 UVM errors, `veer_ahb_scoreboard: PASS`, run 2026-11-07 |
+| — | UVM VIP baseline: external AHB interface (`tb/veer_ahb_vip/`) | **PASS** | `doc/Branch_Merge_and_UVM_Implementation_Readiness_Report.md` & `make -C sim test-uvm-ahb` — 8 beats driven/monitored, 0 UVM errors, `veer_ahb_scoreboard: PASS`, run 2026-11-07 |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |
 
