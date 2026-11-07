@@ -37,6 +37,7 @@
 #include "soc.h"
 #include "test.h"
 #include "uart.h"
+#include "aes.h"
 
 /* Supplied by the linker (sw/linker/veer.ld). */
 extern const test_case_t __test_list_start[];
@@ -237,7 +238,8 @@ TEST_CASE(t_negative_control)
  * `test-suite` uses, and it keeps a default build from silently omitting a
  * whole test area. */
 #if !defined(TEST_SELECT_BUS) && !defined(TEST_SELECT_MEMORY) && \
-    !defined(TEST_SELECT_UART) && !defined(TEST_SELECT_ALL)
+    !defined(TEST_SELECT_UART) && !defined(TEST_SELECT_AES) && \
+    !defined(TEST_SELECT_ALL)
 #define TEST_SELECT_ALL
 #endif
 
@@ -255,6 +257,10 @@ TEST_CASE(t_negative_control)
 
 #if defined(TEST_SELECT_UART) || defined(TEST_SELECT_ALL)
 #include "t_uart.c"
+#endif
+
+#if defined(TEST_SELECT_AES) || defined(TEST_SELECT_ALL)
+#include "t_aes.c"
 #endif
 
 /* ---------------------------------------------------------- serial report --

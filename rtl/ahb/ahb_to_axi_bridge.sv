@@ -155,7 +155,7 @@ module ahb_to_axi_bridge #(
             case (size)
                 3'b000: ahb_lanes = 8'h01 << addr_lo;                 // byte
                 3'b001: ahb_lanes = 8'h03 << {addr_lo[2:1], 1'b0};    // half
-                3'b010: ahb_lanes = 8'h0F << {addr_lo[2], 3'b000};    // word
+                3'b010: ahb_lanes = 8'h0F << {addr_lo[2], 2'b00};    // word
                 default: ahb_lanes = 8'hFF;                           // 64b+
             endcase
         end

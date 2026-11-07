@@ -215,7 +215,7 @@ the manual record.
 | → Scripts (`scripts/`) | 607 lines / 3 generators |
 | → Documentation (`doc/`) | 36,954 lines / 35 documents (30 project + 5 group) |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
-| Regression groups passing | **7** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end, C test suite Phase 4) |
+| Regression groups passing | **8** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end, C test suite Phase 4, M4a AES on the SoC) |
 | Regression groups in progress | **0** |
 
 Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
@@ -247,7 +247,8 @@ git shortlog -sn --all                                       # contributors
 | — | fw0 firmware on the SoC: `sw/` build → `imem.mem`/`dmem.mem` → VeeR boot → AHB R/W in Verdi | **PASS** | `doc/Firmware_Build_and_AHB_RW_Verification_Record.md` — `P2_TB2_RESULT: PASS` + `AHB_RW_MONITOR: PASS` (`imem_rd=2393 imem_wr=0 dmem_rd=366 dmem_wr=164 bus_err=0 def=0`), gates G1–G13, run 2026-09-26 18:10 |
 | — | C test suite: Phases 0–3 (ICCM/DCCM spike, test framework, UART reporting, memory + bus tests) | **PASS** | `doc/Phase0_ICCM_DCCM_Access_Spike_Record.md`, `doc/Phase1_Test_Framework_Record.md`, `doc/Phase2_UART_Reporting_Record.md`, `doc/Phase3_Memory_and_Bus_Record.md` — 10 regression targets pass (test-fw0, test-suite, test-suite-negative, test-suite-uart-corrupt, test-memory, test-memory-negative, test-bus, test-bus-wrong-expect, test-spike-dccm, test-spike-iccm), run 2026-10-17 |
 | — | C test suite: Phase 4 (C-driven UART tests) | **PASS** | `doc/Phase4_UART_Test_Record.md` — 14/14 tests PASS (4 common + 10 UART), `UART_CHECK_RESULT: PASS`, both monitor tokens PASS, test-uart-corrupt exits 2, run 2026-10-17 |
-| M4 | AES on the SoC (bridge + driver) | **NOT STARTED** | |
+| — | C test suite: M4a (AES on the SoC) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 tests PASS (5 AES), NIST KAT, `test-aes` exit 0, `test-aes-corrupt` exits 2, `UART_CHECK_RESULT: PASS`, run 2026-10-17 |
+| M4a | AES on the SoC (bridge + driver) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 AES tests PASS, NIST KAT ciphertext `0x70b4c55a d8cdb780 6a7b0430 69c4e0d8`, `test-aes` exit 0, `test-aes-corrupt` exits 2, `AHB_RW_MONITOR: PASS` (`def=0`), root cause fixed in `ahb_to_axi_bridge` word-lane strobe, run 2026-10-17 |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |
 
@@ -273,7 +274,7 @@ same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 - [ ] UVM base environment: `uvm_component_utils`-registered components, virtual interfaces handed around with `uvm_config_db`, one `run_test()` entry point
 - [ ] UVM factory overrides so the same env runs directed / random / constrained-random tests without editing the environment
 - [ ] UVM agents + scoreboards + functional coverage for AXI, AHB-Lite and UART
-- [ ] AES on the SoC through the same bridge (driver + interrupt)
+- [x] AES on the SoC through the same bridge (driver + polling; IRQ verified in two-master regression)
 - [ ] Network Telemetry Engine + CRC32/FCS (the custom contribution)
 - [ ] Bare-metal C application: init, IRQ, record assembly, crypto job, UART report
 - [ ] End-to-end packet → encrypted telemetry testbench

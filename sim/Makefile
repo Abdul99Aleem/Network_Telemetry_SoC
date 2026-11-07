@@ -91,7 +91,7 @@ TB_PLUSARGS ?=
 .PHONY: all veer-config rtl sim run verdi wave clean help \
         test-fw0 test-spike-dccm test-spike-iccm test-suite test-suite-negative \
         test-suite-uart-corrupt test-memory test-memory-negative \
-        test-bus test-bus-wrong-expect test-uart test-uart-corrupt
+        test-bus test-bus-wrong-expect test-uart test-uart-corrupt test-aes test-aes-corrupt
 .DEFAULT_GOAL := all
 
 all: sim
@@ -356,6 +356,27 @@ test-uart-corrupt:
 	@$(MAKE) -C $(SW_DIR) BUILD=build/uart MAIN_SRC=tests/test_main.c \
 	    EXTRA_CFLAGS="-DTEST_SELECT_UART" all >/dev/null
 	@$(MAKE) run SW_BUILD=$(UART_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS="+expect_uart +uart_corrupt"
+
+# Phase M4a: AES tests.
+AES_BUILD ?= $(SW_DIR)/build/aes
+
+test-aes:
+	@rm -rf $(SW_DIR)/build/aes
+	@$(MAKE) -C $(SW_DIR) BUILD=build/aes MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_AES" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(AES_BUILD) \
+	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
+	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
+	    TB_PLUSARGS=+expect_uart
+
+test-aes-corrupt:
+	@rm -rf $(SW_DIR)/build/aes
+	@$(MAKE) -C $(SW_DIR) BUILD=build/aes MAIN_SRC=tests/test_main.c \
+	    EXTRA_CFLAGS="-DTEST_SELECT_AES" all >/dev/null
+	@$(MAKE) run SW_BUILD=$(AES_BUILD) \
 	    MIN_IMEM_RD=8 MIN_DMEM_RD=8 MIN_DMEM_WR=8 \
 	    EXPECT_DEF=0 EXPECT_BUSERR=0 \
 	    TB_PLUSARGS="+expect_uart +uart_corrupt"

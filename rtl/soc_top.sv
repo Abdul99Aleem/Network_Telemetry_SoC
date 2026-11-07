@@ -49,7 +49,10 @@ module soc_top #(
 
     // ---- UART pins (TX-only per v3 §10.1) ----
     output wire        uart_tx_o,
-    output wire        uart_irq_o
+    output wire        uart_irq_o,
+
+    // ---- AES interrupt ----
+    output wire        aes_irq_o
 );
 
     // ---- fabric -> slave wires ----
@@ -72,6 +75,11 @@ module soc_top #(
     wire [31:0] uart_haddr; wire [2:0] uart_hburst, uart_hsize;
     wire uart_hmastlock; wire [3:0] uart_hprot; wire [1:0] uart_htrans;
     wire [63:0] uart_hwdata, uart_hrdata;
+
+    wire aes_hsel, aes_hwrite, aes_hreadyout, aes_hresp;
+    wire [31:0] aes_haddr; wire [2:0] aes_hburst, aes_hsize;
+    wire aes_hmastlock; wire [3:0] aes_hprot; wire [1:0] aes_htrans;
+    wire [63:0] aes_hwdata, aes_hrdata;
 
     ahb_interconnect u_fabric (
         .hclk(clk), .hreset_n(reset_n),
@@ -112,7 +120,14 @@ module soc_top #(
         .uart_htrans(uart_htrans), .uart_hwrite(uart_hwrite),
         .uart_hwdata(uart_hwdata),
         .uart_hrdata(uart_hrdata),
-        .uart_hreadyout(uart_hreadyout), .uart_hresp(uart_hresp)
+        .uart_hreadyout(uart_hreadyout), .uart_hresp(uart_hresp),
+        .aes_hsel(aes_hsel), .aes_haddr(aes_haddr),
+        .aes_hburst(aes_hburst), .aes_hmastlock(aes_hmastlock),
+        .aes_hprot(aes_hprot), .aes_hsize(aes_hsize),
+        .aes_htrans(aes_htrans), .aes_hwrite(aes_hwrite),
+        .aes_hwdata(aes_hwdata),
+        .aes_hrdata(aes_hrdata),
+        .aes_hreadyout(aes_hreadyout), .aes_hresp(aes_hresp)
     );
 
     // IMEM: 0x0000_0000 - 0x0000_7FFF (32 KB)
@@ -210,6 +225,81 @@ module soc_top #(
         .s_axi_rvalid(rvalid), .s_axi_rready(rready),
 
         .uart_tx_o(uart_tx_o), .uart_rx_i(1'b1), .uart_irq(uart_irq_o)
+    );
+
+    // ---- AHB-Lite -> AXI4 bridge + AES (0x1000_4000 / 4KB) ----
+    localparam AES_ID_WIDTH = 8;
+
+    wire [AES_ID_WIDTH-1:0] aes_awid, aes_bid, aes_arid, aes_rid;
+    wire [31:0] aes_awaddr, aes_wdata, aes_araddr, aes_rdata;
+    wire [7:0]  aes_awlen, aes_arlen;
+    wire [2:0]  aes_awsize, aes_arsize;
+    wire [1:0]  aes_awburst, aes_arburst, aes_bresp, aes_rresp;
+    wire        aes_awlock, aes_wlast, aes_arlock, aes_rlast;
+    wire [3:0]  aes_awcache, aes_wstrb, aes_arcache;
+    wire [2:0]  aes_awprot, aes_arprot;
+    wire [3:0]  aes_awqos, aes_arqos;
+    wire        aes_awuser, aes_wuser, aes_buser, aes_aruser, aes_ruser;
+    wire        aes_awvalid, aes_awready, aes_wvalid, aes_wready, aes_bvalid, aes_bready;
+    wire        aes_arvalid, aes_arready, aes_rvalid, aes_rready;
+
+    ahb_to_axi_bridge #(.ID_WIDTH(AES_ID_WIDTH)) u_ahb2axi_aes (
+        .hclk(clk), .hreset_n(reset_n),
+        .hsel(aes_hsel), .haddr(aes_haddr), .hburst(aes_hburst),
+        .hmastlock(aes_hmastlock), .hprot(aes_hprot),
+        .hsize(aes_hsize), .htrans(aes_htrans), .hwrite(aes_hwrite),
+        .hwdata(aes_hwdata), .hrdata(aes_hrdata),
+        .hreadyout(aes_hreadyout), .hresp(aes_hresp),
+
+        .m_axi_awid(aes_awid), .m_axi_awaddr(aes_awaddr), .m_axi_awlen(aes_awlen),
+        .m_axi_awsize(aes_awsize), .m_axi_awburst(aes_awburst),
+        .m_axi_awlock(aes_awlock), .m_axi_awcache(aes_awcache),
+        .m_axi_awprot(aes_awprot), .m_axi_awqos(aes_awqos), .m_axi_awuser(aes_awuser),
+        .m_axi_awvalid(aes_awvalid), .m_axi_awready(aes_awready),
+
+        .m_axi_wdata(aes_wdata), .m_axi_wstrb(aes_wstrb), .m_axi_wlast(aes_wlast),
+        .m_axi_wuser(aes_wuser), .m_axi_wvalid(aes_wvalid), .m_axi_wready(aes_wready),
+
+        .m_axi_bid(aes_bid), .m_axi_bresp(aes_bresp), .m_axi_bvalid(aes_bvalid),
+        .m_axi_bready(aes_bready),
+
+        .m_axi_arid(aes_arid), .m_axi_araddr(aes_araddr), .m_axi_arlen(aes_arlen),
+        .m_axi_arsize(aes_arsize), .m_axi_arburst(aes_arburst),
+        .m_axi_arlock(aes_arlock), .m_axi_arcache(aes_arcache),
+        .m_axi_arprot(aes_arprot), .m_axi_arqos(aes_arqos), .m_axi_aruser(aes_aruser),
+        .m_axi_arvalid(aes_arvalid), .m_axi_arready(aes_arready),
+
+        .m_axi_rid(aes_rid), .m_axi_rdata(aes_rdata), .m_axi_rresp(aes_rresp),
+        .m_axi_rlast(aes_rlast), .m_axi_ruser(aes_ruser),
+        .m_axi_rvalid(aes_rvalid), .m_axi_rready(aes_rready)
+    );
+
+    aes_axi_slave #(.ID_WIDTH(AES_ID_WIDTH)) u_aes (
+        .clk(clk), .rst(~reset_n),
+
+        .s_axi_awid(aes_awid), .s_axi_awaddr(aes_awaddr), .s_axi_awlen(aes_awlen),
+        .s_axi_awsize(aes_awsize), .s_axi_awburst(aes_awburst),
+        .s_axi_awlock(aes_awlock), .s_axi_awcache(aes_awcache),
+        .s_axi_awprot(aes_awprot), .s_axi_awqos(aes_awqos), .s_axi_awuser(aes_awuser),
+        .s_axi_awvalid(aes_awvalid), .s_axi_awready(aes_awready),
+
+        .s_axi_wdata(aes_wdata), .s_axi_wstrb(aes_wstrb), .s_axi_wlast(aes_wlast),
+        .s_axi_wuser(aes_wuser), .s_axi_wvalid(aes_wvalid), .s_axi_wready(aes_wready),
+
+        .s_axi_bid(aes_bid), .s_axi_bresp(aes_bresp), .s_axi_buser(aes_buser),
+        .s_axi_bvalid(aes_bvalid), .s_axi_bready(aes_bready),
+
+        .s_axi_arid(aes_arid), .s_axi_araddr(aes_araddr), .s_axi_arlen(aes_arlen),
+        .s_axi_arsize(aes_arsize), .s_axi_arburst(aes_arburst),
+        .s_axi_arlock(aes_arlock), .s_axi_arcache(aes_arcache),
+        .s_axi_arprot(aes_arprot), .s_axi_arqos(aes_arqos), .s_axi_aruser(aes_aruser),
+        .s_axi_arvalid(aes_arvalid), .s_axi_arready(aes_arready),
+
+        .s_axi_rid(aes_rid), .s_axi_rdata(aes_rdata), .s_axi_rresp(aes_rresp),
+        .s_axi_rlast(aes_rlast), .s_axi_ruser(aes_ruser),
+        .s_axi_rvalid(aes_rvalid), .s_axi_rready(aes_rready),
+
+        .aes_irq(aes_irq_o)
     );
 
     ahb_default_slave u_default (

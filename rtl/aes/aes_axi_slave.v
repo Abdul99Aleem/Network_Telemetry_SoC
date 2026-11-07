@@ -541,7 +541,6 @@ module aes_axi_slave #(
                 rdata_reg  <= read_data;
                 rresp_reg  <= 2'b00;       // OKAY
                 rvalid_reg <= 1'b1;
-
             end
 
             // ----------------------------------------------------

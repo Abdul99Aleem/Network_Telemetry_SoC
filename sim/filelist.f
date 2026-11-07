@@ -31,6 +31,9 @@ $FW_PROJ/rtl/soc_top.sv
 // ---- UART subsystem (Phase-3, attached at 0x1000_0000) ----
 -f $FW_PROJ/run/uart_rtl.f
 
+// ---- AES subsystem (M4a, attached at 0x1000_4000) ----
+-f $FW_PROJ/run/aes_rtl.f
+
 // ---- testbench ----
 // tb_ahb_cycle_monitor precedes the top: tb_veer_p2_soc instantiates it.
 $FW_PROJ/tb/tb_ahb_cycle_monitor.sv
