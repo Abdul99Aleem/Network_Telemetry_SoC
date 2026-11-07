@@ -36,17 +36,12 @@ module veer_ahb_tb_top;
     // -------------------------------------------------------------------------
     // DUT — soc_top
     // -------------------------------------------------------------------------
-    string imem_hex = "";
-    string dmem_hex = "";
-
-    initial begin
-        if ($value$plusargs("IMEM_HEX=%s", imem_hex)) begin end
-        if ($value$plusargs("DMEM_HEX=%s", dmem_hex)) begin end
-    end
+    parameter string IMEM_HEX = "";
+    parameter string DMEM_HEX = "";
 
     soc_top #(
-        .IMEM_HEX (imem_hex),
-        .DMEM_HEX (dmem_hex)
+        .IMEM_HEX (IMEM_HEX),
+        .DMEM_HEX (DMEM_HEX)
     ) u_dut (
         .clk          (hclk),
         .reset_n      (vif.reset_n),
@@ -76,9 +71,10 @@ module veer_ahb_tb_top;
         .lsu_hready   (vif.lsu_hready),
         .lsu_hresp    (vif.lsu_hresp),
 
-        // UART pins — observed by uart_serial_vip, not this VIP
+        // Peripheral outputs — observed by peripheral VIPs / monitors
         .uart_tx_o    (),    // leave open here; connect in combined tb if needed
-        .uart_irq_o   ()
+        .uart_irq_o   (),
+        .aes_irq_o    ()
     );
 
     // -------------------------------------------------------------------------

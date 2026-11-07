@@ -59,12 +59,9 @@ interface veer_ahb_if (input logic hclk);
     logic reset_n;
 
     // -------------------------------------------------------------------------
-    // Clocking block — synchronises driver and monitor to posedge hclk.
+    // Clocking block for driver — synchronises driver to posedge hclk.
     //   output: TB drives these onto the DUT inputs
     //   input:  TB samples these from the DUT outputs
-    //
-    // Standard 1-step skew: outputs driven 1-step before edge (default),
-    // inputs sampled 1-step after edge (default).
     // -------------------------------------------------------------------------
     clocking cb @(posedge hclk);
         // IFU address/control (TB drives)
@@ -81,10 +78,23 @@ interface veer_ahb_if (input logic hclk);
     endclocking
 
     // -------------------------------------------------------------------------
+    // Clocking block for monitor — all signals are inputs so monitor can sample
+    // without illegal clocking-output sampling errors.
+    // -------------------------------------------------------------------------
+    clocking mon_cb @(posedge hclk);
+        input ifu_haddr, ifu_hburst, ifu_hmastlock, ifu_hprot,
+              ifu_hsize, ifu_htrans, ifu_hwrite;
+        input ifu_hrdata, ifu_hready, ifu_hresp;
+        input lsu_haddr, lsu_hburst, lsu_hmastlock, lsu_hprot,
+              lsu_hsize, lsu_htrans, lsu_hwrite, lsu_hwdata;
+        input lsu_hrdata, lsu_hready, lsu_hresp;
+    endclocking
+
+    // -------------------------------------------------------------------------
     // Modports
     // -------------------------------------------------------------------------
     modport master_mp (clocking cb, input hclk, output reset_n);
-    modport passive_mp (input hclk, reset_n,
+    modport passive_mp (clocking mon_cb, input hclk, reset_n,
                         input ifu_haddr, ifu_hburst, ifu_hmastlock, ifu_hprot,
                               ifu_hsize, ifu_htrans, ifu_hwrite,
                               ifu_hrdata, ifu_hready, ifu_hresp,

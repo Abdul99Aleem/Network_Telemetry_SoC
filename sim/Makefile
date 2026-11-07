@@ -424,6 +424,35 @@ wave:
 	@echo "cd $(WORK); setenv DISPLAY :0"
 	@echo "verdi -ssf p2_veer_soc.fsdb -dbdir simv.daidir -sswr $(REPO)/run/fw_wave.rc &"
 
+# ---------------------------------------------------------------------------
+# UVM VIP AHB Testbench (External soc_top AHB interface)
+# ---------------------------------------------------------------------------
+UVM_WORK := $(REPO)/build/sim/uvm_ahb
+
+test-uvm-ahb:
+	@mkdir -p $(UVM_WORK)
+	@echo "[SIM] compiling UVM VIP testbench (veer_ahb_tb_top)..."
+	cd $(UVM_WORK) && vcs -full64 -sverilog -ntb_opts uvm-1.2 \
+	    +incdir+$(REPO)/tb/veer_ahb_vip \
+	    $(REPO)/rtl/ahb/ahb_interconnect.sv \
+	    $(REPO)/rtl/ahb/ahb_sram.sv \
+	    $(REPO)/rtl/ahb/ahb_default_slave.sv \
+	    -f $(REPO)/run/uart_rtl.f \
+	    -f $(REPO)/run/aes_rtl.f \
+	    $(REPO)/rtl/soc_top.sv \
+	    $(REPO)/tb/veer_ahb_vip/veer_ahb_if.sv \
+	    $(REPO)/tb/veer_ahb_vip/veer_ahb_pkg.sv \
+	    $(REPO)/tb/veer_ahb_vip/veer_ahb_tb_top.sv \
+	    -top veer_ahb_tb_top \
+	    -timescale=1ns/1ps -l compile.log
+	@echo "[SIM] running UVM VIP testbench..."
+	cd $(UVM_WORK) && ./simv +UVM_VERBOSITY=UVM_MEDIUM -l sim.log
+	@grep -q "veer_ahb_scoreboard: PASS" $(UVM_WORK)/sim.log && \
+	    echo "[SIM] PASS: veer_ahb_scoreboard passed (0 UVM_ERROR / 0 UVM_FATAL)"
+
+clean-uvm:
+	rm -rf $(UVM_WORK)
+
 clean:
-	rm -rf $(WORK)
-	@echo "[SIM] cleaned $(WORK)"
+	rm -rf $(WORK) $(UVM_WORK)
+	@echo "[SIM] cleaned $(WORK) and $(UVM_WORK)"

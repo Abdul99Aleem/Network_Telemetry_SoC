@@ -17,7 +17,7 @@ and reports it over UART — all driven by a VeeR EL2 RISC-V core.**
 - **Verification methodology:** directed self-checking SystemVerilog today →
   layered **UVM** environment next (UVM factory overrides + `uvm_config_db`,
   see [§6](#6-verification-methodology-directed-today-uvm-next))
-- **README last re-verified against a live run:** 2026-10-17
+- **README last re-verified against a live run:** 2026-11-07
 
 ---
 
@@ -147,16 +147,16 @@ Network_Telemetry_SoC/
 │   ├── uart/                   # UART AXI slave wrapper + vendored UART IP (ip/)
 │   └── interconnects/          # AXI 2x8 interconnect, arbiter, priority encoder
 ├── sw/                         # bare-metal firmware: src/, include/, linker/, Makefile
-├── sim/                        # VCS/Verdi side of the fw0 flow: Makefile, filelist.f
+├── sim/                        # VCS/Verdi side of the fw0/UVM flow: Makefile, filelist.f
 ├── Makefile                    # root delegator: firmware -> images -> snapshot -> compile -> run -> gate
-├── tb/                         # self-checking testbenches (*.sv), one per regression
+├── tb/                         # self-checking testbenches (*.sv) + UVM VIPs (veer_ahb_vip/, uart_serial_vip/)
 ├── run/                        # VCS filelists (*.f), flow scripts (*.csh),
 │                               # Verdi signal groups (*.rc), tcl; run/fw_wave.rc = fw0 waves
-├── scripts/                    # generators (axi_interconnect_wrap.py, p2_prog_gen.py)
+├── scripts/                    # generators (uvm_full_tb_generator.py, signal CSVs, p2_prog_gen.py)
 ├── aes/                        # OpenCores/asics.ws AES-128 core (vendored)
 ├── axi-lite_uart-ipcore-develop/  # original UART drop-in (git-ignored; sources
 │                               #   copied into rtl/uart/ip/)
-└── doc/                        # architecture docs, phase records, screenshots
+└── doc/                        # architecture docs, UVM plan & 18-test matrix, phase records, screenshots
 ```
 
 Notes:
@@ -197,35 +197,35 @@ relocate cleanly — see [§10](#10-hard-coded-paths).
 
 ### 5.1 Numbers
 
-Snapshot as of **2026-10-17**. Badges above update themselves; this table is
+Snapshot as of **2026-11-07**. Badges above update themselves; this table is
 the manual record.
 
 | Metric | Value |
 |---|---|
-| Commits so far (`git rev-list --count HEAD`) | **39** |
-| Active window | **49 days** — 2026-08-29 → 2026-10-17 |
+| Commits so far (`git rev-list --count HEAD`) | **46** |
+| Active window | **71 days** — 2026-08-29 → 2026-11-07 |
 | Developers | **1** (two git identities: lab account + GitHub) |
-| Tracked files | **146** |
-| Lines committed in `HEAD` (excl. CPU submodule) | **62,595** |
-| → RTL (`rtl/`) | 7,489 lines / 26 files |
-| → Testbenches (`tb/`) | 7,661 lines / 12 benches |
-| → Flow (`run/`) | 1,517 lines / 27 files (11 filelists, 7 `csh` flows, Verdi RCs) |
-| → Firmware (`sw/`) | 3,200 lines / 16 files |
-| → Simulation flow (`sim/`) | 447 lines / 2 files |
-| → Scripts (`scripts/`) | 607 lines / 3 generators |
-| → Documentation (`doc/`) | 36,954 lines / 35 documents (30 project + 5 group) |
+| Tracked files | **173** |
+| Lines committed in `HEAD` (excl. CPU submodule) | **65,000+** |
+| → RTL (`rtl/`) | 7,604 lines / 26 files |
+| → Testbenches (`tb/`) | 8,740 lines / 26 files (12 flat benches + 14 UVM VIP files) |
+| → Flow (`run/`) | 1,526 lines / 28 files (11 filelists, 7 `csh` flows, Verdi RCs) |
+| → Firmware (`sw/`) | 3,441 lines / 19 files |
+| → Simulation flow (`sim/`) | 500 lines / 2 files |
+| → Scripts (`scripts/`) | 862 lines / 9 files |
+| → Documentation (`doc/`) | 37,603 lines / 38 documents (33 project + 5 group) |
 | Submodules | 1 — `core/Cores-VeeR-EL2`, locked at `06ad26a` |
-| Regression groups passing | **8** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end, C test suite Phase 4, M4a AES on the SoC) |
+| Regression groups passing | **9** (VeeR bring-up, AHB fabric, AXI+AES single-master, AXI+AES 2-master, UART isolated, Phase 3 UART end-to-end, C test suite Phase 4, M4a AES on the SoC, UVM VIP veer_ahb baseline) |
 | Regression groups in progress | **0** |
 
 Counted against `HEAD`, so the numbers reproduce identically on a fresh clone
 rather than shifting with whatever happens to be dirty in your working tree:
 
 ```bash
-git rev-list --count HEAD                                    # 39 commits
+git rev-list --count HEAD                                    # 46 commits
 git log --reverse --format=%ad --date=short | head -1        # first commit
-git ls-files | wc -l                                         # 124 tracked files
-git archive HEAD | tar -xO | wc -l                           # 62595 committed lines
+git ls-files | wc -l                                         # 173 tracked files
+git archive HEAD | tar -xO | wc -l                           # 65000+ committed lines
 for d in rtl tb run scripts doc sw sim; do                   # per-directory
   printf '%-8s %6d %3d files\n' "$d" \
     "$(git archive HEAD $d | tar -xO | wc -l)" \
@@ -249,6 +249,7 @@ git shortlog -sn --all                                       # contributors
 | — | C test suite: Phase 4 (C-driven UART tests) | **PASS** | `doc/Phase4_UART_Test_Record.md` — 14/14 tests PASS (4 common + 10 UART), `UART_CHECK_RESULT: PASS`, both monitor tokens PASS, test-uart-corrupt exits 2, run 2026-10-17 |
 | — | C test suite: M4a (AES on the SoC) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 tests PASS (5 AES), NIST KAT, `test-aes` exit 0, `test-aes-corrupt` exits 2, `UART_CHECK_RESULT: PASS`, run 2026-10-17 |
 | M4a | AES on the SoC (bridge + driver) | **PASS** | `doc/AES_AXI_Integration_Verification_Record.md` §35 — 9/9 AES tests PASS, NIST KAT ciphertext `0x70b4c55a d8cdb780 6a7b0430 69c4e0d8`, `test-aes` exit 0, `test-aes-corrupt` exits 2, `AHB_RW_MONITOR: PASS` (`def=0`), root cause fixed in `ahb_to_axi_bridge` word-lane strobe, run 2026-10-17 |
+| — | UVM VIP baseline: external AHB interface (`tb/veer_ahb_vip/`) | **PASS** | `make -C sim test-uvm-ahb` — 8 beats driven/monitored, 0 UVM errors, `veer_ahb_scoreboard: PASS`, run 2026-11-07 |
 | M5 | Network Telemetry Engine + CRC32 + IRQs | **NOT STARTED** | |
 | M6 | Full SoC + bare-metal app + end-to-end TB | **NOT STARTED** | |
 
@@ -271,10 +272,10 @@ same milestones, one-off-by-one offset. M6 is the goal drawn out in §2.*
 - [x] fw0: C firmware, `sw/Makefile` image gates G1–G13, `imem.mem`/`dmem.mem` generated and validated
 - [x] fw0: VeeR boots the C program through the fabric and writes the DMEM mailbox — `P2_TB2_RESULT: PASS`
 - [x] fw0: additive AHB read/write-cycle monitor gating `AHB_RW_MONITOR: PASS`, all eight Verdi checklist rows proved cycle-by-cycle (`doc/Firmware_Build_and_AHB_RW_Verification_Record.md`)
-- [ ] UVM base environment: `uvm_component_utils`-registered components, virtual interfaces handed around with `uvm_config_db`, one `run_test()` entry point
-- [ ] UVM factory overrides so the same env runs directed / random / constrained-random tests without editing the environment
-- [ ] UVM agents + scoreboards + functional coverage for AXI, AHB-Lite and UART
 - [x] AES on the SoC through the same bridge (driver + polling; IRQ verified in two-master regression)
+- [x] UVM base VIP skeleton for external soc_top AHB interface (`tb/veer_ahb_vip/` with clocking block, sequence item, pipelined driver, dual-port monitor, scoreboard, and test runnable via `make -C sim test-uvm-ahb`)
+- [x] UVM interface analysis (`doc/UVM_VIP_Interface_Analysis.md`) and 18-test simplified testplan matrix (`doc/UVM_Simplified_Testplan_18_Test_Matrix.md` / `doc/UVM_Testplan_RISC-V_Network_Telemetry_SoC_Updated.xlsx`)
+- [ ] Layered UVM environment for remaining external interfaces (`uart_serial_vip`) and full system-level tests (18-test execution roadmap)
 - [ ] Network Telemetry Engine + CRC32/FCS (the custom contribution)
 - [ ] Bare-metal C application: init, IRQ, record assembly, crypto job, UART report
 - [ ] End-to-end packet → encrypted telemetry testbench
@@ -340,8 +341,13 @@ worth it:
 4. **SoC-level virtual sequence** — the end-to-end goal from §2 as one
    `uvm_test`: packet chunks in → telemetry → AES → UART report out.
 
-None of this is built yet — §5.2 has what's actually passing today, and this
-section is the plan I'll move into that table one IP at a time.
+### 6.4 Current UVM Assets and Implementation Status
+
+The UVM migration has progressed with formal architectural baselines and external interface VIPs:
+- **Interface Boundary Analysis** (`doc/UVM_VIP_Interface_Analysis.md`): Clarifies that the only external interfaces crossing the `soc_top` boundary are the AHB-Lite IFU/LSU ports (`ifu_*`, `lsu_*`), the UART physical output (`uart_tx_o`, `uart_irq_o`), and the AES interrupt line (`aes_irq_o`). All internal AXI wires between bridge and slaves are internal and do not get independent chip-level VIPs.
+- **18-Test Simplified Testplan Matrix** (`doc/UVM_Simplified_Testplan_18_Test_Matrix.md` and `doc/UVM_Testplan_RISC-V_Network_Telemetry_SoC_Updated.xlsx`): Defines the 18 representative verification scenarios covering reset, AHB arbitration, AXI strobes, UART framing/baud, AES encryption KAT, and multi-block concurrency with signal-level pass/fail criteria and dual SV/C working principles.
+- **`veer_ahb_vip` external master agent** (`tb/veer_ahb_vip/`): Fully implemented and compiling cleanly with VCS U-2023.03 and UVM 1.2 (`make -C sim test-uvm-ahb`). Includes pipelined AHB driver with semaphore handshake, dual-port monitor with separate non-conflicting `mon_cb` clocking block, configuration object, and scoreboard.
+- **`uart_serial_vip`** (`tb/uart_serial_vip/`): Interface skeleton committed; serial monitor and scoreboard deserializer in development.
 
 ---
 
@@ -517,6 +523,9 @@ Useful `sw/` sub-targets: `make -C sw elf | mem | dis | manifest | clean`.
 | UART subsystem, isolated | `./uart_full_flow.csh` | — |
 | UART on the SoC (Phase 3) | `./p3_uart_flow.csh` | — |
 | **C firmware → images → VeeR boot → AHB R/W** | — | `make` (or `make firmware mem veer-config rtl sim`) |
+| **M4a AES SoC integration test** | — | `make -C sim test-aes` |
+| **UVM VIP baseline regression** | — | `make -C sim test-uvm-ahb` |
+| Full C test suite regression | — | `make -C sim test-suite` |
 | Firmware build only, no simulation | — | `make -C sw all inspect` |
 | Compile the SoC RTL without running | — | `make rtl` |
 | Re-run only the simulation from a built tree | — | `make sim` |

@@ -68,7 +68,7 @@ class veer_ahb_monitor extends uvm_monitor;
         addr_phase_pending = 0;
 
         forever begin
-            @(vif.cb);
+            @(vif.mon_cb);
 
             // ---------- Address phase detection ----------
             // A new beat starts when HTRANS is NONSEQ or SEQ and HREADY is 1
@@ -145,24 +145,24 @@ class veer_ahb_monitor extends uvm_monitor;
     // All use the clocking block so there is no glitch risk.
     // -------------------------------------------------------------------------
     function automatic bit [31:0]  get_haddr  (e_port_sel_t p);
-        return (p==PORT_IFU) ? vif.cb.ifu_haddr  : vif.cb.lsu_haddr;  endfunction
+        return (p==PORT_IFU) ? vif.mon_cb.ifu_haddr  : vif.mon_cb.lsu_haddr;  endfunction
     function automatic e_htrans_t  get_htrans (e_port_sel_t p);
-        return (p==PORT_IFU) ? e_htrans_t'(vif.cb.ifu_htrans) : e_htrans_t'(vif.cb.lsu_htrans); endfunction
+        return (p==PORT_IFU) ? e_htrans_t'(vif.mon_cb.ifu_htrans) : e_htrans_t'(vif.mon_cb.lsu_htrans); endfunction
     function automatic e_hsize_t   get_hsize  (e_port_sel_t p);
-        return (p==PORT_IFU) ? e_hsize_t'(vif.cb.ifu_hsize)  : e_hsize_t'(vif.cb.lsu_hsize);  endfunction
+        return (p==PORT_IFU) ? e_hsize_t'(vif.mon_cb.ifu_hsize)  : e_hsize_t'(vif.mon_cb.lsu_hsize);  endfunction
     function automatic e_hburst_t  get_hburst (e_port_sel_t p);
-        return (p==PORT_IFU) ? e_hburst_t'(vif.cb.ifu_hburst): e_hburst_t'(vif.cb.lsu_hburst); endfunction
+        return (p==PORT_IFU) ? e_hburst_t'(vif.mon_cb.ifu_hburst): e_hburst_t'(vif.mon_cb.lsu_hburst); endfunction
     function automatic e_hwrite_t  get_hwrite (e_port_sel_t p);
-        return (p==PORT_IFU) ? e_hwrite_t'(vif.cb.ifu_hwrite): e_hwrite_t'(vif.cb.lsu_hwrite); endfunction
+        return (p==PORT_IFU) ? e_hwrite_t'(vif.mon_cb.ifu_hwrite): e_hwrite_t'(vif.mon_cb.lsu_hwrite); endfunction
     function automatic bit [3:0]   get_hprot  (e_port_sel_t p);
-        return (p==PORT_IFU) ? vif.cb.ifu_hprot  : vif.cb.lsu_hprot;  endfunction
+        return (p==PORT_IFU) ? vif.mon_cb.ifu_hprot  : vif.mon_cb.lsu_hprot;  endfunction
     function automatic bit         get_hready (e_port_sel_t p);
-        return (p==PORT_IFU) ? vif.cb.ifu_hready : vif.cb.lsu_hready; endfunction
+        return (p==PORT_IFU) ? vif.mon_cb.ifu_hready : vif.mon_cb.lsu_hready; endfunction
     function automatic bit         get_hresp  (e_port_sel_t p);
-        return (p==PORT_IFU) ? vif.cb.ifu_hresp  : vif.cb.lsu_hresp;  endfunction
+        return (p==PORT_IFU) ? vif.mon_cb.ifu_hresp  : vif.mon_cb.lsu_hresp;  endfunction
     function automatic bit [63:0]  get_hrdata (e_port_sel_t p);
-        return (p==PORT_IFU) ? vif.cb.ifu_hrdata : vif.cb.lsu_hrdata; endfunction
+        return (p==PORT_IFU) ? vif.mon_cb.ifu_hrdata : vif.mon_cb.lsu_hrdata; endfunction
     function automatic bit [63:0]  get_hwdata (e_port_sel_t p);
-        return (p==PORT_IFU) ? 64'h0             : vif.cb.lsu_hwdata; endfunction
+        return (p==PORT_IFU) ? 64'h0                 : vif.mon_cb.lsu_hwdata; endfunction
 
 endclass : veer_ahb_monitor
